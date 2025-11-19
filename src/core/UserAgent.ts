@@ -1,22 +1,19 @@
-import { 
+import {
     UserAgent as SIPUserAgent, 
-    // Inviter, 
+    Inviter, 
     Registerer, 
-    RegistererState, 
+    RegistererState,
+    type LogLevel, 
     // UserAgentState, 
     // Invitation
 } from 'sip.js';
-/* import type {
-    SessionDescriptionHandlerFactory,
-    SessionDescriptionHandler
-} from 'sip.js';
-import { mediaDevices, RTCPeerConnection } from 'react-native-webrtc';
-import { Session } from './Session'; */
+import { Session } from './Session';
 import type Auth from './Auth';
 import type { Listeners } from '../types';
 import type { SipCredentials } from './Auth';
 import { REGISTRATION_EXPIRES } from '../constants';
-import { isTokenValid } from '../utils/validation';
+import { isTokenValid,SessionType } from '../utils/validation';
+import { InvalidValueException, UnknownException } from '../exceptions';
 
 interface UserAgentConfig {
     auth: Auth;
@@ -35,6 +32,7 @@ class UserAgent extends SIPUserAgent {
     #updatingAuth=false;
     #maxRetryAttempts = 3;
     #reRegisterAttempts = 0;
+    #session: Session | null = null;
 
     constructor(config: UserAgentConfig) {
 
@@ -44,10 +42,10 @@ class UserAgent extends SIPUserAgent {
                 traceSip: true,
                 connectionTimeout: 15,
             },
-            logLevel:  'debug',
+            logLevel:  'debug' as LogLevel, // Cast to LogLevel type
             autostart: false,
             register: false,
-            uri:SIPUserAgent.makeURI( `sip:${config.auth.sipUsername}@${config.edgeDomain}:9080` )
+            uri: SIPUserAgent.makeURI(`sip:${config.auth.sipUsername}@${config.edgeDomain}:9080`),
         }
 
         super(options);
@@ -77,6 +75,10 @@ class UserAgent extends SIPUserAgent {
 
     get server() {
         return this.#server;
+    }
+
+    get listeners() {
+        return this.#listeners;
     }
 
     get reConnectAttempts() {
@@ -163,6 +165,52 @@ class UserAgent extends SIPUserAgent {
         } else {
             console.warn('Registerer is null, cannot unregister.');
         }
+    }
+
+    async stopUA() {
+        this.#reRegisterAttempts = 3;
+        this.#reConnectAttempts = 3;
+        await this.stop();
+    }
+
+    async makeCall(candidateNumber:any, options:any) {
+        try {
+            const candidate = UserAgent.makeURI("sip:" + candidateNumber + "@" + this.#server);
+            if (!candidate) {
+                throw new Error("Invalid candidate URI");
+            }
+            const metadata = options.metadata ?? {};
+            const inviter = new Inviter(this, candidate, {
+                sessionDescriptionHandlerOptions: {
+                    constraints: { audio: true, video: false },
+                },
+                extraHeaders: [
+                    `token: ${this.#auth.getSipToken}`,
+                    `X-Transaction-Id: ${metadata.transactionId ?? ""}`,
+                    `X-Job-Id: ${metadata.jobId ?? ""}`,
+                    `X-Reference-Id: ${metadata.candidateId ?? ""}`,
+                ]
+            });
+            console.log('Inviter created:', inviter);
+            this.#session = new Session(inviter, SessionType, this);
+            this.#session.remoteContact = candidateNumber;
+            if (this.#listeners.onCallCreated) {
+                this.#listeners.onCallCreated(SessionType.Outgoing, {candidate: candidateNumber});
+            }
+            console.log('Calling invite on SIP session');
+            await inviter.invite();
+            console.log('Call invitation sent successfully');
+            return true;
+        } catch (err) {
+            if(err instanceof InvalidValueException || err instanceof UnknownException)
+                throw err;
+            console.error('Error in UserAgent.makeCall', err);
+            return false;
+        }
+    }
+
+    public clearSession(): void {
+        this.#session = null;
     }
 }
 

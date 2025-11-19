@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { View, Button, Text, ActivityIndicator, Linking } from 'react-native';
+import { View, Button, Text, ActivityIndicator, Linking, Platform, PermissionsAndroid, StyleSheet } from 'react-native';
 import { Softphone } from 'react-native-softphone-sdk';
 
 const FREJUN_CREDENTIALS = {
-  clientId: 'e8zICiydoDgPSlI9JHsJDKEYnhH7lBapJKGurQ9h',
-  clientSecret: 'pbkdf2_sha256$600000$0XXsGeDFe9kGDVqGTIdnnt$N3dK+aDScMJSoB/q1MXDcTmd5IQ4kt2nvbRoX/nvAY8=',
+  clientId: '<ClientId>',
+  clientSecret: '<ClientSecret>',
 };
 
 const App = () => {
@@ -80,26 +80,50 @@ const App = () => {
 
             softphone.start(listeners).catch(error => {
                 console.error("Failed to start softphone:", error);
-                handleLogout();
+                // handleLogout();
             });
         }
     },[softphone]);
 
   // --- login() is now simpler ---
   const handleLogin = async () => {
-      try {
-          await Softphone.login();
-      } catch(error) {
-          console.error(error); // This will catch the error if initialize was never called
-      }
-  };
+    // 1. ADD THIS BLOCK: Request Microphone Permission on Android
+    if (Platform.OS === 'android') {
+        try {
+            const granted = await PermissionsAndroid.request(
+                PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+                {
+                    title: 'Microphone Permission',
+                    message: 'This app needs access to your microphone to make calls.',
+                    buttonNeutral: 'Ask Me Later',
+                    buttonNegative: 'Cancel',
+                    buttonPositive: 'OK',
+                },
+            );
+            if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
+                console.log('Microphone permission denied');
+                return;
+            }
+        } catch (err) {
+            console.warn(err);
+            return;
+        }
+    }
 
-  const handleLogout = async () => {
+    // 2. Proceed with Login
+    try {
+        await Softphone.login();
+    } catch(error) {
+        console.error(error);
+    }
+    };
+
+  /* const handleLogout = async () => {
       if (softphone) {
           await softphone.logout();
           setSoftphone(null);
       }
-  };
+  }; */
 
   if (isLoading) {
       return <ActivityIndicator size="large" />;
@@ -107,20 +131,20 @@ const App = () => {
 
   return (
       <View
-      style={{ 
-        flex: 1, 
-        justifyContent: 'center', 
-        alignItems: 'center',
-        backgroundColor: '#f5f5f5'
-      }}
+      style={styles.container}
       >
           {softphone ? (
               <>
                   <Text>Welcome! You are logged in.</Text>
-                  <Button title="Make a Test Call" onPress={() => {
-                      softphone.makeCall('+916361710745','+918645328392')
+                  <Button title="Make a Test Call" onPress={async() => {
+                    try{
+                        let res = await softphone.makeCall('+916361710745','+918065428342');
+                        console.log('Call initiated',res);
+                    }catch(err){
+                        console.log('Error making call',err);
+                    }
                   }} />
-                  <Button title="Logout" onPress={handleLogout} />
+                  <Button title="Logout" onPress={() => {}} />
               </>
           ) : (
               <Button title="Login with FreJun" onPress={handleLogin} />
@@ -128,5 +152,14 @@ const App = () => {
       </View>
   );
 };
+
+const styles = StyleSheet.create({
+    container:{ 
+        flex: 1, 
+        justifyContent: 'center', 
+        alignItems: 'center',
+        backgroundColor: '#f5f5f5'
+    }
+});
 
 export default App;

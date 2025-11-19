@@ -32,6 +32,7 @@ export const validatePhoneNumber = (phoneNumber:any) => {
       return phoneUtil.isValidNumber(parsedNumber);
     } catch (error) {
       console.log("Error while validating phonenumber as", error);
+      return false;
     }
 };
 

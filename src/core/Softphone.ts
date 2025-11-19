@@ -12,6 +12,7 @@ class Softphone{
     static #isInitialized = false;
     #primaryVN:any;
     #server:any;
+    #clientListeners:any;
 
     #auth: Auth;
     #userAgent: UserAgent | null = null;
@@ -142,6 +143,8 @@ class Softphone{
 
             this.#server = edgeDomain;
 
+            this.#clientListeners = listeners;
+
             console.log('Softphone: SIP credentials and edge domain retrieved.', sipCredentials);
             console.log('Softphone: edgeDomain', edgeDomain);
 
@@ -174,52 +177,102 @@ class Softphone{
     }
 
     public async makeCall(number:any,virtualNumber:any,options={}){
-        this.ensureLoggedIn('makeCall');
-        this.isTokenValid('Softphone.makeCall')
-
-        if(!this.#auth.permissions.find(p => p.action === 'outbound calls')){
-            throw new Exceptions.PermissionDeniedException('Softphone.makeCall', 'You do not have permission to make outbound calls');
-        }
-
-        if(!number || !number.trim()?.length){
-            throw new Exceptions.MissingParameterException('Softphone.makeCall', ['number']);
-        }
-
-        if(!validatePhoneNumber(number)) {
-            throw new Exceptions.InvalidValueException('Softphone.makeCall', 'number', number, ['[+][country calling code][national number]']);
-        }
-
-        console.log('in Softphone.makeCall');
-        console.log('Making call to number:', number);
-        console.log('Using virtual number:', virtualNumber);
-        console.log('With options:', options);
-        console.log('condition check :- ',(virtualNumber && this.#primaryVN !== virtualNumber))
-
-        if(virtualNumber && this.#primaryVN !== virtualNumber){
-
-          console.log('Primary virtual number differs from requested. Updating primary virtual number...');
-
-          const response = await this.#updatePrimaryVirtualNumber(virtualNumber);
-          console.log('Primary virtual number updated:', this.#primaryVN);
-          console.log('Response from updating primary VN:', response);
-          const edgeDomain = response?.edgeDomain; // Safely access edgeDomain
-          console.log(edgeDomain, this.#server)
-
+        try{
+            this.ensureLoggedIn('makeCall');
+            this.isTokenValid('Softphone.makeCall')
+    
+            if(!this.#auth.permissions.find(p => p.action === 'outbound calls')){
+                throw new Exceptions.PermissionDeniedException('Softphone.makeCall', 'You do not have permission to make outbound calls');
+            }
+    
+            if(!number || !number.trim()?.length){
+                throw new Exceptions.MissingParameterException('Softphone.makeCall', ['number']);
+            }
+    
+            if(!validatePhoneNumber(number)) {
+                throw new Exceptions.InvalidValueException('Softphone.makeCall', 'number', number, ['[+][country calling code][national number]']);
+            }
+    
+            console.log('in Softphone.makeCall');
+            console.log('Making call to number:', number);
+            console.log('Using virtual number:', virtualNumber);
+            console.log('With options:', options);
+            console.log('condition check :- ',(virtualNumber && this.#primaryVN !== virtualNumber))
+    
+            if(virtualNumber && this.#primaryVN !== virtualNumber){
+    
+              console.log('Primary virtual number differs from requested. Updating primary virtual number...');
+    
+              const response = await this.#updatePrimaryVirtualNumber(virtualNumber);
+              console.log('Primary virtual number updated:', this.#primaryVN);
+              console.log('Response from updating primary VN:', response);
+              const edgeDomain = response?.edgeDomain; // Safely access edgeDomain
+              console.log(edgeDomain,this.#server);
+              if(edgeDomain !== this.#server) {
+                await this.#handleEdgeDomainChange(edgeDomain);
+              }
+            }
+    
+            return await this.#userAgent?.makeCall(number, options);
+        }catch(err){
+            console.log("Error in Softphone.makeCall:", err);
+            return null;
         }
     }
 
+    async #handleEdgeDomainChange(edgeDomain:string) {
+        //   this.endCurrentSession();
+
+        if(!this.#userAgent){
+           throw new Exceptions.UnknownException('Softphone.#handleEdgeDomainChange', 'UserAgent is not initialized');
+        }
+        await this.#userAgent.unregister();
+        await this.#userAgent.stopUA();
+        this.#server = edgeDomain;
+        this.#userAgent = null;
+        const sipCredentials = await this.#auth.registerSoftphone();
+        const config = {
+            auth: this.#auth,
+            listeners: this.#clientListeners,
+            sipCredentials,
+            edgeDomain
+        };
+
+        if(!this.#userAgent){
+            this.#userAgent = new UserAgent(config);
+            console.log('Softphone: User Agent initialized. Starting User Agent...',this.#userAgent);
+            await this.#userAgent.startUA();
+        }
+    }
+
+    /* endCurrentSession(){
+        console.log('in Softphone.endCurrentSession');
+        const sessionState = this.getSession?.getSessionState;
+    }
+
+    get getSession() {
+        this.ensureLoggedIn('getSession');
+        return this.#userAgent?.
+    } */
+
     async #updatePrimaryVirtualNumber(virtualNumber:any){
         console.log('Updating primary virtual number to:', virtualNumber);
-        let response = await fetch(BASE_URL+`/auth/update-userprofile/?email=${encodeURIComponent(this.#auth.getEmail || "")}`,{
+        const Url = BASE_URL+`/auth/update-userprofile/?email=${encodeURIComponent(this.#auth.getEmail || "")}`;
+        console.log('Update User Profile URL:', Url);
+        console.log('Current Access Token:', this.#auth.getAccessToken());
+        let response = await fetch(Url,{
             method:'PATCH',
             headers:{
-                'authorization': `Bearer ${this.#auth.getAccessToken}`,
+                'authorization': `Bearer ${this.#auth.getAccessToken()}`,
                 'Content-type':'application/json'
             },
             body: JSON.stringify({'primary_vn': virtualNumber})
         });
+        console.log('Response received from update-userprofile endpoint:', response);
         const status = response.status;
+        console.log('Response status:', status);
         const responseData = await response.json();
+        console.log('Response data:', responseData);
 
         if(status === 400){
             throw new Exceptions.InvalidValueException('Softphone.makeCall', 'virtualNumber', virtualNumber, ['A virtual number linked to your account']);
@@ -228,14 +281,19 @@ class Softphone{
             throw new Exceptions.UnknownException('Softphone.makeCall', JSON.stringify(responseData.message || ''));
         }
 
+        console.log('Update primary virtual number successful.');
+
         if(status === 200){
+            console.log('Setting new primary virtual number:', responseData.data?.primary_virtual_number);
             this.#primaryVN = responseData.data?.primary_virtual_number?.country_code + responseData.data?.primary_virtual_number?.number
+            console.log('New primary virtual number set to:', this.#primaryVN);
             return {
                 success: true,
                 edgeDomain: responseData.data?.edge_domain
             };
         }
 
+        return { success: false }; // Added return statement for other code paths
     }
 }
 
