@@ -1,165 +1,271 @@
-import { useState, useEffect } from 'react';
-import { View, Button, Text, ActivityIndicator, Linking, Platform, PermissionsAndroid, StyleSheet } from 'react-native';
+import { useState, useEffect, useRef } from 'react';
+import {
+    View,
+    Button,
+    Text,
+    ActivityIndicator,
+    Linking,
+    Platform,
+    PermissionsAndroid,
+    StyleSheet,
+    SafeAreaView,
+    TouchableOpacity,
+    ScrollView
+} from 'react-native';
 import { Softphone } from 'react-native-softphone-sdk';
 
 const FREJUN_CREDENTIALS = {
-  clientId: '<ClientId>',
-  clientSecret: '<ClientSecret>',
+    clientId: '<Client-Id>',
+    clientSecret: '<Client-Secret>',
 };
 
 const App = () => {
-  const [softphone, setSoftphone] = useState<Softphone | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-//   const [callState, setCallState] = useState('Idle');
-//   const [activeSession, setActiveSession] = useState(null);
-  
-  useEffect(() => {
-      // --- This is now the single point of SDK configuration ---
-      const initializeSdk = async () => {
-          try {
-              // Initialize with credentials and see if a session can be restored.
-              const restoredSoftphone = await Softphone.initialize(FREJUN_CREDENTIALS);
-              if (restoredSoftphone) {
-                  setSoftphone(restoredSoftphone);
-              }
-          } catch (error) {
-              console.error("SDK Initialization failed:", error);
-              // You might want to show an error state to the user
-          } finally {
-              setIsLoading(false);
-          }
-      };
+    const [softphone, setSoftphone] = useState<Softphone | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [connectionStatus, setConnectionStatus] = useState<'Disconnected' | 'Connecting' | 'Connected'>('Disconnected');
 
-      initializeSdk();
-      
-      // --- The deep link handler no longer needs credentials ---
-      const deepLinkSub = Linking.addEventListener('url', async (event) => {
-        console.log("Deep link received:", event.url);
-          if (event.url.includes('?code=')) {
-              setIsLoading(true);
-              console.log("Handling redirect for login...");
-              try {
-                  // handleRedirect now knows the credentials from the initialize step.
-                  const newSoftphone = await Softphone.handleRedirect(event.url);
-                  console.log("Login successful, Softphone instance obtained.");
-                  setSoftphone(newSoftphone);
-              } catch (error) {
-                  console.error("Login failed during redirect:", error);
-              } finally {
-                  setIsLoading(false);
-              }
-          }
-      });
+    const [callStatus, setCallStatus] = useState<'Idle' | 'Incoming' | 'Dialing' | 'Ringing' | 'Active'>('Idle');
+    const [remoteContact, setRemoteContact] = useState('');
 
-      return () => deepLinkSub.remove();
+    const activeSession = useRef<any>(null);
+
+    useEffect(() => {
+        const initializeSdk = async () => {
+            console.log('[App] 🚀 Starting Initialization...');
+            try {
+                const restoredSoftphone = await Softphone.initialize(FREJUN_CREDENTIALS);
+                if (restoredSoftphone) {
+                    setSoftphone(restoredSoftphone);
+                }
+            } catch (error) {
+                console.error('[App] ❌ Initialization failed:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        initializeSdk();
+
+        const deepLinkSub = Linking.addEventListener('url', async (event) => {
+            if (event.url.includes('?code=')) {
+                setIsLoading(true);
+                try {
+                    const newSoftphone = await Softphone.handleRedirect(event.url);
+                    console.log('[App] 🎉 Login successful!');
+                    setSoftphone(newSoftphone);
+                } catch (error) {
+                    console.error('[App] ❌ Login failed:', error);
+                } finally {
+                    setIsLoading(false);
+                }
+            }
+        });
+        return () => deepLinkSub.remove();
     }, []);
 
     useEffect(() => {
         if (softphone) {
-
             const listeners = {
-                onConnectionStateChange: (type:any, state:any, isError:any, error:any) => {
-                    console.log(`Connection State Change: ${type} - ${state} - Error: ${isError ? 'Yes' : 'No'} - ${error ? error : ''}`);
-                    // if (isError) console.error('Connection Error:', error);
+                onConnectionStateChange: (type: any, state: any, isError: boolean, error: any) => {
+                    console.log(`[App] 📡 Status: ${state}`);
+                    console.log(`[App] 📡 Type: ${type}`);
+                    console.log(`[App] 📡 Error: ${error}`);
+                    console.log(`[App] 📡 IsError: ${isError}`);
+                    if (state === 'Registered' || state === 'Connected') {
+                        setConnectionStatus('Connected');
+                    } else if (state === 'Unregistered' || state === 'Disconnected') {
+                        setConnectionStatus('Disconnected');
+                    } else {
+                        setConnectionStatus('Connecting');
+                    }
                 },
-                onCallCreated: (type:any, details:any) => {
-                    console.log(`Call Created: ${type} to ${details.candidate}`);
-                    // setCallState(`Call created (${type})`);
-                    // setActiveSession(softphone.getSession());
+
+                onCallCreated: (type: any, session: any, details: any) => {
+                    console.log(`[App] 📞 Call Created. Type: ${type}`);
+
+                    // Logic to handle multiple incoming invites for the same call
+                    if (type === 'Incoming' && callStatus === 'Incoming') {
+                        console.log('[App] ⚠️ Duplicate Invite received. Updating session reference.');
+                        // We update the ref to the latest session invite, as that's likely the one we will answer
+                        activeSession.current = session;
+                        return;
+                    }
+
+                    activeSession.current = session;
+
+                    const candidate = details?.candidate || 'Unknown';
+                    setRemoteContact(candidate);
+
+                    if (type === 'Incoming') {
+                        setCallStatus('Incoming');
+                    } else {
+                        setCallStatus('Dialing');
+                    }
                 },
-                onCallAnswered: (session:any) => {
-                    console.log('Call Answered',session);
-                    // setCallState('Established');
+
+                onCallRinging: (session: any) => {
+                    console.log('[App] 🔔 Ringing', session);
+                    setCallStatus('Ringing');
                 },
-                onCallHangup: (session:any) => {
-                    console.log('Call Hung up',session);
-                    // setCallState('Idle');
-                    // setActiveSession(null);
+
+                onCallAnswered: (session: any) => {
+                    console.log('[App] 🗣️ Answered');
+                    setCallStatus('Active');
+                    activeSession.current = session;
+                },
+
+                // *** CRITICAL FIX HERE ***
+                onCallHangup: (session: any) => {
+                    console.log('[App] 📵 Hangup received');
+
+                    // Check if the session hanging up is the one we are currently using
+                    if (activeSession.current && activeSession.current !== session) {
+                        console.log('[App] 🛡️ Ignoring hangup for a session that is not active (Duplicate Invite Cancellation)');
+                        return;
+                    }
+
+                    console.log('[App] ✅ Valid Hangup. Resetting UI.');
+                    setCallStatus('Idle');
+                    setRemoteContact('');
+                    activeSession.current = null;
                 }
             };
 
-            softphone.start(listeners).catch(error => {
-                console.error("Failed to start softphone:", error);
-                // handleLogout();
+            setConnectionStatus('Connecting');
+            softphone.start(listeners).catch(err => {
+                console.error("[App] ❌ Start failed:", err);
+                setConnectionStatus('Disconnected');
             });
         }
-    },[softphone]);
+    }, [softphone, callStatus]); // Added callStatus to dependency array so we can check it inside listeners
 
-  // --- login() is now simpler ---
-  const handleLogin = async () => {
-    // 1. ADD THIS BLOCK: Request Microphone Permission on Android
-    if (Platform.OS === 'android') {
-        try {
-            const granted = await PermissionsAndroid.request(
-                PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
-                {
-                    title: 'Microphone Permission',
-                    message: 'This app needs access to your microphone to make calls.',
-                    buttonNeutral: 'Ask Me Later',
-                    buttonNegative: 'Cancel',
-                    buttonPositive: 'OK',
-                },
-            );
-            if (granted !== PermissionsAndroid.RESULTS.GRANTED) {
-                console.log('Microphone permission denied');
-                return;
-            }
-        } catch (err) {
-            console.warn(err);
-            return;
+    const handleLogin = async () => {
+        if (Platform.OS === 'android') {
+            await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO);
+        }
+        await Softphone.login();
+    };
+
+    const handleMakeCall = async () => {
+        if (!softphone) return;
+        await softphone.makeCall('+916361710745', '+918065428342');
+    };
+
+    const handleAnswer = async () => {
+        if (activeSession.current) {
+            console.log('[App] Answering call...');
+            try {
+                await activeSession.current.answer();
+            } catch (e) { console.error(e); }
+        } else {
+            console.warn('[App] No active session to answer!');
+        }
+    };
+
+    const handleHangup = async () => {
+        if (activeSession.current) {
+            console.log('[App] Hanging up...');
+            try {
+                await activeSession.current.hangup();
+            } catch (e) { console.error(e); }
+        }
+    };
+
+    const handleLogout = async () => {
+        if (softphone) {
+            await softphone.logout();
+            setSoftphone(null);
+            setConnectionStatus('Disconnected');
         }
     }
 
-    // 2. Proceed with Login
-    try {
-        await Softphone.login();
-    } catch(error) {
-        console.error(error);
-    }
-    };
+    if (isLoading) return <ActivityIndicator size="large" style={styles.loader} />;
 
-  /* const handleLogout = async () => {
-      if (softphone) {
-          await softphone.logout();
-          setSoftphone(null);
-      }
-  }; */
+    return (
+        <SafeAreaView style={styles.container}>
+            <ScrollView contentContainerStyle={styles.content}>
+                <Text style={styles.header}>Softphone</Text>
 
-  if (isLoading) {
-      return <ActivityIndicator size="large" />;
-  }
+                {!softphone ? (
+                    <Button title="Login with FreJun" onPress={handleLogin} />
+                ) : (
+                    <View style={styles.dashboard}>
+                        <View style={[
+                            styles.badge,
+                            { backgroundColor: connectionStatus === 'Connected' ? '#4CAF50' : '#F44336' }
+                        ]}>
+                            <Text style={styles.badgeText}>{connectionStatus.toUpperCase()}</Text>
+                        </View>
 
-  return (
-      <View
-      style={styles.container}
-      >
-          {softphone ? (
-              <>
-                  <Text>Welcome! You are logged in.</Text>
-                  <Button title="Make a Test Call" onPress={async() => {
-                    try{
-                        let res = await softphone.makeCall('+916361710745','+918065428342');
-                        console.log('Call initiated',res);
-                    }catch(err){
-                        console.log('Error making call',err);
-                    }
-                  }} />
-                  <Button title="Logout" onPress={() => {}} />
-              </>
-          ) : (
-              <Button title="Login with FreJun" onPress={handleLogin} />
-          )}
-      </View>
-  );
+                        {callStatus === 'Incoming' && (
+                            <View style={[styles.card, styles.incomingCard]}>
+                                <Text style={styles.incomingTitle}>📞 Incoming Call</Text>
+                                <Text style={styles.contactName}>{remoteContact}</Text>
+                                <View style={styles.row}>
+                                    <TouchableOpacity style={[styles.btn, styles.btnReject]} onPress={handleHangup}>
+                                        <Text style={styles.btnText}>Reject</Text>
+                                    </TouchableOpacity>
+                                    <TouchableOpacity style={[styles.btn, styles.btnAnswer]} onPress={handleAnswer}>
+                                        <Text style={styles.btnText}>Answer</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            </View>
+                        )}
+
+                        {callStatus === 'Active' && (
+                            <View style={styles.card}>
+                                <Text style={styles.activeTitle}>On Call</Text>
+                                <Text style={styles.contactName}>{remoteContact}</Text>
+                                <Text style={{ color: 'green', marginBottom: 20 }}>00:00</Text>
+                                <TouchableOpacity style={[styles.btn, styles.btnReject, { width: '80%' }]} onPress={handleHangup}>
+                                    <Text style={styles.btnText}>End Call</Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+
+                        {(callStatus === 'Dialing' || callStatus === 'Ringing') && (
+                            <View style={styles.card}>
+                                <Text style={styles.activeTitle}>Calling...</Text>
+                                <Text style={styles.contactName}>{remoteContact}</Text>
+                                <ActivityIndicator size="small" color="#0000ff" style={{ marginBottom: 10 }} />
+                                <Button title="Cancel" color="red" onPress={handleHangup} />
+                            </View>
+                        )}
+
+                        {callStatus === 'Idle' && connectionStatus === 'Connected' && (
+                            <View style={styles.card}>
+                                <Text style={{ marginBottom: 10 }}>Ready to make calls</Text>
+                                <Button title="Call Test Number" onPress={handleMakeCall} />
+                            </View>
+                        )}
+
+                        <View style={{ marginTop: 50 }}>
+                            <Button title="Logout" color="gray" onPress={handleLogout} />
+                        </View>
+                    </View>
+                )}
+            </ScrollView>
+        </SafeAreaView>
+    );
 };
 
 const styles = StyleSheet.create({
-    container:{ 
-        flex: 1, 
-        justifyContent: 'center', 
-        alignItems: 'center',
-        backgroundColor: '#f5f5f5'
-    }
+    container: { flex: 1, backgroundColor: '#f0f0f0' },
+    loader: { flex: 1, justifyContent: 'center' },
+    content: { padding: 20, alignItems: 'center' },
+    header: { fontSize: 24, fontWeight: 'bold', marginBottom: 20, color: '#333' },
+    dashboard: { width: '100%', alignItems: 'center' },
+    badge: { paddingHorizontal: 15, paddingVertical: 5, borderRadius: 20, marginBottom: 20 },
+    badgeText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+    card: { width: '100%', backgroundColor: '#fff', borderRadius: 15, padding: 20, alignItems: 'center', elevation: 5, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 5, marginBottom: 20 },
+    incomingCard: { backgroundColor: '#E3F2FD', borderColor: '#2196F3', borderWidth: 1 },
+    incomingTitle: { fontSize: 18, fontWeight: 'bold', marginBottom: 5, color: '#000' },
+    contactName: { fontSize: 20, marginBottom: 20, color: '#333' },
+    row: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
+    btn: { paddingVertical: 12, paddingHorizontal: 20, borderRadius: 30, minWidth: 100, alignItems: 'center' },
+    btnAnswer: { backgroundColor: '#4CAF50' },
+    btnReject: { backgroundColor: '#F44336' },
+    btnText: { color: 'white', fontWeight: 'bold' },
+    activeTitle: { fontSize: 16, color: '#666' },
 });
 
 export default App;

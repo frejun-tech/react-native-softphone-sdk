@@ -1,18 +1,17 @@
 import {
-    UserAgent as SIPUserAgent, 
-    Inviter, 
-    Registerer, 
+    UserAgent as SIPUserAgent,
+    Inviter,
+    Registerer,
     RegistererState,
-    type LogLevel, 
-    // UserAgentState, 
-    // Invitation
+    type LogLevel,
+    Invitation
 } from 'sip.js';
 import { Session } from './Session';
 import type Auth from './Auth';
 import type { Listeners } from '../types';
 import type { SipCredentials } from './Auth';
 import { REGISTRATION_EXPIRES } from '../constants';
-import { isTokenValid,SessionType } from '../utils/validation';
+import { isTokenValid, SessionType } from '../utils/validation';
 import { InvalidValueException, UnknownException } from '../exceptions';
 
 interface UserAgentConfig {
@@ -29,7 +28,7 @@ class UserAgent extends SIPUserAgent {
     #listeners: Listeners;
     #reConnectAttempts: number = 0;
     #registerer: Registerer | null = null;
-    #updatingAuth=false;
+    #updatingAuth = false;
     #maxRetryAttempts = 3;
     #reRegisterAttempts = 0;
     #session: Session | null = null;
@@ -42,7 +41,7 @@ class UserAgent extends SIPUserAgent {
                 traceSip: true,
                 connectionTimeout: 15,
             },
-            logLevel:  'debug' as LogLevel, // Cast to LogLevel type
+            logLevel: 'debug' as LogLevel, // Cast to LogLevel type
             autostart: false,
             register: false,
             uri: SIPUserAgent.makeURI(`sip:${config.auth.sipUsername}@${config.edgeDomain}:9080`),
@@ -66,9 +65,33 @@ class UserAgent extends SIPUserAgent {
             },
             onDisconnect: (error) => {
                 console.log('SIP UserAgent disconnected.', error);
+                if (this.#listeners.onConnectionStateChange) {
+                    this.#listeners.onConnectionStateChange("UserAgentState", "Disconnected", !!error, error);
+                }
             },
-            onInvite: (Invitation) => {
-                console.log('Incoming call invitation received', Invitation);
+            onInvite: (invitation: Invitation) => {
+                console.log('Incoming call invitation received', invitation);
+
+                // Create a wrapper Session for the incoming call
+                this.#session = new Session(invitation, SessionType, this, this.#listeners);
+
+                console.log('Session created', this.#session);
+
+                const remoteIdentity = invitation.remoteIdentity.uri.user;
+
+                console.log('remoteIdentity', remoteIdentity);
+
+                this.#session.remoteContact = remoteIdentity;
+
+                console.log('remoteContact', this.#session.remoteContact);
+
+                // Notify App
+                if (this.#listeners.onCallCreated) {
+                    this.#listeners.onCallCreated(SessionType.Incoming, this.#session, { candidate: remoteIdentity });
+                }
+
+                // Auto-answer logic could go here, or UI can trigger answer()
+                // invitation.accept(); 
             }
         }
     }
@@ -101,24 +124,29 @@ class UserAgent extends SIPUserAgent {
         console.log('Registerer created');
 
         this.#registerer.stateChange.addListener(async (newState) => {
+
             if (this.#listeners.onConnectionStateChange) {
                 this.#listeners.onConnectionStateChange("RegistererState", newState, this.#reRegisterAttempts >= this.#maxRetryAttempts);
             }
+
             switch (newState) {
                 case RegistererState.Unregistered:
-                    if(!this.#updatingAuth && this.#auth.isLoggedIn() && this.#reRegisterAttempts < this.#maxRetryAttempts) {
+                    if (!this.#updatingAuth && this.#auth.isLoggedIn() && this.#reRegisterAttempts < this.#maxRetryAttempts) {
                         console.log('Registerer state is Unregistered, reRegisterAttempts: ', this.#reRegisterAttempts, 'calling reRegister');
                         this.#reRegisterAttempts++;
                         await this.reRegister();
                     }
                     break;
                 case RegistererState.Registered:
+                    console.log('Registerer state is Registered');
                     this.#reRegisterAttempts = 0;
                     break;
                 default:
                     break;
             }
         })
+
+        await this.#registerer.register();
     }
 
     async reRegister() {
@@ -126,7 +154,7 @@ class UserAgent extends SIPUserAgent {
         try {
             await this.unregister();
         }
-        catch(error) {
+        catch (error) {
             // ignore invalid state transition error
             console.warn(error);
         }
@@ -173,7 +201,7 @@ class UserAgent extends SIPUserAgent {
         await this.stop();
     }
 
-    async makeCall(candidateNumber:any, options:any) {
+    async makeCall(candidateNumber: any, options: any) {
         try {
             const candidate = UserAgent.makeURI("sip:" + candidateNumber + "@" + this.#server);
             if (!candidate) {
@@ -192,17 +220,17 @@ class UserAgent extends SIPUserAgent {
                 ]
             });
             console.log('Inviter created:', inviter);
-            this.#session = new Session(inviter, SessionType, this);
+            this.#session = new Session(inviter, SessionType, this, this.#listeners);
             this.#session.remoteContact = candidateNumber;
             if (this.#listeners.onCallCreated) {
-                this.#listeners.onCallCreated(SessionType.Outgoing, {candidate: candidateNumber});
+                this.#listeners.onCallCreated(SessionType.Outgoing, this.#session, { candidate: candidateNumber });
             }
             console.log('Calling invite on SIP session');
             await inviter.invite();
             console.log('Call invitation sent successfully');
             return true;
         } catch (err) {
-            if(err instanceof InvalidValueException || err instanceof UnknownException)
+            if (err instanceof InvalidValueException || err instanceof UnknownException)
                 throw err;
             console.error('Error in UserAgent.makeCall', err);
             return false;
