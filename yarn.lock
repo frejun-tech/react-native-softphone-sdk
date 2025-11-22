@@ -10385,6 +10385,7 @@ __metadata:
     react: 19.1.0
     react-native: 0.81.1
     react-native-builder-bob: ^0.40.14
+    react-native-encrypted-storage: ^4.0.3
     react-native-monorepo-config: ^0.1.9
     react-native-webrtc: ^124.0.7
   languageName: unknown

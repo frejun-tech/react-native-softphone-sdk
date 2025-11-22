@@ -15,7 +15,7 @@ export interface SipCredentials {
     accessToken: string; // This is the SIP token
 }
 
-class Auth{
+class Auth {
     #accessToken: string | null = null;
     #refreshToken: string | null = null;
     #email: string | null = null;
@@ -38,7 +38,7 @@ class Auth{
     public static async initialize(): Promise<Auth | null> {
         console.log('Auth: Initializing...');
         const tokenData = await TokenManager.get();
-        
+
         if (tokenData && isTokenValid(tokenData.accessToken) === true) {
             console.log('Auth: Session restored from storage.');
             const auth = new Auth(tokenData);
@@ -54,7 +54,7 @@ class Auth{
                 return null;
             }
         }
-        
+
         console.log('Auth: No valid session found in storage.');
         // If tokens exist but are expired, clear them
         if (tokenData) {
@@ -89,41 +89,30 @@ class Auth{
 
         // It now uses the passed-in credentials
         const tokenData = await this.exchangeCodeForToken(code, clientId, clientSecret);
-        console.log('Auth: Token exchange successful.');
-        
         this.#accessToken = tokenData.access_token;
         this.#refreshToken = tokenData.refresh_token;
         this.#email = email;
 
-        console.log('Auth: Retrieving user roles and permissions...');
-
         await this.retrieveUserRoles();
 
-        console.log('Auth: Login process completed successfully. Saving session to storage...');
-
         await TokenManager.save({ accessToken: this.#accessToken, refreshToken: this.#refreshToken, email: this.#email });
-        console.log('Auth: Session saved to storage.');
     }
 
-    public async registerSoftphone(): Promise<SipCredentials>{
-        console.log('in registerSoftphone');
-
+    public async registerSoftphone(): Promise<SipCredentials> {
         if (!this.#accessToken || !this.#email) {
-            throw new Exceptions.UnauthorizedException('retrieveUserRoles', 'Access token or email is missing.');
+            throw new Exceptions.UnauthorizedException('registerSoftphone', 'Access token or email is missing.');
         }
 
         const tokenValidity = isTokenValid(this.#accessToken);
 
-        console.log(`Auth: Access token validity - ${tokenValidity}`);
-
-        if(tokenValidity && typeof tokenValidity !== 'boolean'){
+        if (tokenValidity && typeof tokenValidity !== 'boolean') {
             throw new Exceptions.InvalidTokenException('registerSoftphone', tokenValidity);
         }
 
         const res = await fetch(BASE_URL + `/calls/register-softphone/?email=${encodeURIComponent(this.#email)}`, {
-            method : 'GET',
-            headers : {
-                'Authorization' : `Bearer ${this.#accessToken}`
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${this.#accessToken}`
             }
         });
 
@@ -141,16 +130,14 @@ class Auth{
 
         this.sipUsername = response.username;
         this.sipToken = response.access_token;
-        console.log('Auth: SIP credentials retrieved successfully.');
-        
+
         return { username: response.username, accessToken: response.access_token };
     }
 
     public async retrieveUserProfile(): Promise<string> {
-        console.log('Auth: Retrieving user profile for edge domain...');
         if (!this.#accessToken || !this.#email) throw new Exceptions.UnauthorizedException('retrieveUserProfile', 'Access token or email is missing.');
         if (isTokenValid(this.#accessToken) !== true) throw new Exceptions.InvalidTokenException('retrieveUserProfile', 'EXPIRED');
-        
+
         const res = await fetch(`${BASE_URL}/integrations/profile/?email=${encodeURIComponent(this.#email)}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${this.#accessToken}` }
@@ -168,6 +155,60 @@ class Auth{
         return response.data.edge_domain;
     }
 
+    public async refreshAccessToken(clientId: string, clientSecret: string): Promise<boolean> {
+        console.log('Auth: 🔄 Attempting to refresh access token...');
+
+        try {
+            // Header: Authorization: Bearer Base64Encoded(Client ID:Client Secret)
+            const credentials = `${clientId}:${clientSecret}`;
+            const encodedCredentials = Buffer.from(credentials).toString('base64');
+
+            const response = await fetch(`${BASE_URL}/oauth/token/refresh/`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${encodedCredentials}`,
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    refresh: this.#refreshToken
+                })
+            });
+
+            const data = await response.json();
+
+            if (response.ok && data.success) {
+                console.log('Auth: ✅ Token refresh successful.');
+
+                // 1. Update Local State
+                this.#accessToken = data.access;
+                this.#refreshToken = data.refresh;
+
+                // 2. Save to Storage
+                if (this.#email) {
+                    await TokenManager.save({
+                        accessToken: this.#accessToken!,
+                        refreshToken: this.#refreshToken!,
+                        email: this.#email
+                    });
+                }
+
+                // 3. Refetch Permissions and Profile as requested
+                console.log('Auth: 🔄 Refetching Roles and Profile after refresh...');
+                await this.retrieveUserRoles();
+                await this.retrieveUserProfile();
+
+                return true;
+            } else {
+                console.error('Auth: Token refresh API failed.', data);
+                return false;
+            }
+        } catch (error) {
+            console.error('Auth: Error during token refresh.', error);
+            return false;
+        }
+
+    }
+
     /**
      * Fetches user roles and permissions from the server and validates SDK access.
      * Throws PermissionDeniedException if the user is not allowed to use the SDK.
@@ -183,7 +224,7 @@ class Auth{
 
         console.log(`Auth: Access token validity - ${tokenValidity}`);
 
-        if(tokenValidity && typeof tokenValidity !== 'boolean'){
+        if (tokenValidity && typeof tokenValidity !== 'boolean') {
             throw new Exceptions.InvalidTokenException('Softphone.login', tokenValidity);
         }
 
@@ -216,7 +257,7 @@ class Auth{
             // If they don't have permission, the login process fails here.
             throw new Exceptions.PermissionDeniedException('retrieveUserRoles', 'User does not have permission to use the SDK.');
         }
-        
+
         console.log('Auth: SDK access permission verified.');
     }
 
@@ -248,20 +289,14 @@ class Auth{
     }
 
     private async exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ access_token: string, refresh_token: string }> {
-        console.log('Auth: Exchanging authorization code for tokens...');
         const credentials = `${clientId}:${clientSecret}`;
-        console.log(`Auth: Using credentials - ${credentials}`);
         const encodedCredentials = Buffer.from(credentials).toString('base64');
-        console.log(`Auth: Encoded credentials - ${encodedCredentials}`);
         const url = `${BASE_URL}/oauth/token/?code=${code}`;
-        console.log(`Auth: Token endpoint URL - ${url}`);
 
         const response = await fetch(url, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${encodedCredentials}` },
         });
-
-        console.log(`Auth: Token endpoint response status - ${response.status}`);
 
         const data = await response.json();
         if (response.ok && data.success) {
@@ -270,12 +305,12 @@ class Auth{
             throw new Exceptions.UnauthorizedException('exchangeCodeForToken', data.message);
         }
     }
-    
+
     get getSipToken() {
         return this.sipToken
     }
 
-    get getEmail():string | null {
+    get getEmail(): string | null {
         return this.#email;
     }
 

@@ -15,8 +15,8 @@ import {
 import { Softphone } from 'react-native-softphone-sdk';
 
 const FREJUN_CREDENTIALS = {
-    clientId: '<Client-Id>',
-    clientSecret: '<Client-Secret>',
+    clientId: 'E0A1pczXNhQCP4mmHhgKojKgUxiqLn7GGJUJAr3f',
+    clientSecret: 'pbkdf2_sha256$600000$xyTcRJxoNyH8OMuf8EfhwN$PZrDHqrHt0gdYm3fZl55u9thTwXC64QZ5gzZbWYQcL0=',
 };
 
 const App = () => {
