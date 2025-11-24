@@ -138,7 +138,7 @@ const App = () => {
                   <Text>Welcome! You are logged in.</Text>
                   <Button title="Make a Test Call" onPress={async() => {
                     try{
-                        let res = await softphone.makeCall('+916361710745','+918065428342');
+                        let res = await softphone.makeCall('To','From');
                         console.log('Call initiated',res);
                     }catch(err){
                         console.log('Error making call',err);
