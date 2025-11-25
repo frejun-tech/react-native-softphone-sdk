@@ -15,7 +15,7 @@ export interface SipCredentials {
     accessToken: string; // This is the SIP token
 }
 
-class Auth{
+class Auth {
     #accessToken: string | null = null;
     #refreshToken: string | null = null;
     #email: string | null = null;
@@ -38,7 +38,7 @@ class Auth{
     public static async initialize(): Promise<Auth | null> {
         console.log('Auth: Initializing...');
         const tokenData = await TokenManager.get();
-        
+
         if (tokenData && isTokenValid(tokenData.accessToken) === true) {
             console.log('Auth: Session restored from storage.');
             const auth = new Auth(tokenData);
@@ -54,7 +54,7 @@ class Auth{
                 return null;
             }
         }
-        
+
         console.log('Auth: No valid session found in storage.');
         // If tokens exist but are expired, clear them
         if (tokenData) {
@@ -90,7 +90,7 @@ class Auth{
         // It now uses the passed-in credentials
         const tokenData = await this.exchangeCodeForToken(code, clientId, clientSecret);
         console.log('Auth: Token exchange successful.');
-        
+
         this.#accessToken = tokenData.access_token;
         this.#refreshToken = tokenData.refresh_token;
         this.#email = email;
@@ -105,7 +105,7 @@ class Auth{
         console.log('Auth: Session saved to storage.');
     }
 
-    public async registerSoftphone(): Promise<SipCredentials>{
+    public async registerSoftphone(): Promise<SipCredentials> {
         console.log('in registerSoftphone');
 
         if (!this.#accessToken || !this.#email) {
@@ -116,14 +116,14 @@ class Auth{
 
         console.log(`Auth: Access token validity - ${tokenValidity}`);
 
-        if(tokenValidity && typeof tokenValidity !== 'boolean'){
+        if (tokenValidity && typeof tokenValidity !== 'boolean') {
             throw new Exceptions.InvalidTokenException('registerSoftphone', tokenValidity);
         }
 
         const res = await fetch(BASE_URL + `/calls/register-softphone/?email=${encodeURIComponent(this.#email)}`, {
-            method : 'GET',
-            headers : {
-                'Authorization' : `Bearer ${this.#accessToken}`
+            method: 'GET',
+            headers: {
+                'Authorization': `Bearer ${this.#accessToken}`
             }
         });
 
@@ -142,7 +142,7 @@ class Auth{
         this.sipUsername = response.username;
         this.sipToken = response.access_token;
         console.log('Auth: SIP credentials retrieved successfully.');
-        
+
         return { username: response.username, accessToken: response.access_token };
     }
 
@@ -150,7 +150,7 @@ class Auth{
         console.log('Auth: Retrieving user profile for edge domain...');
         if (!this.#accessToken || !this.#email) throw new Exceptions.UnauthorizedException('retrieveUserProfile', 'Access token or email is missing.');
         if (isTokenValid(this.#accessToken) !== true) throw new Exceptions.InvalidTokenException('retrieveUserProfile', 'EXPIRED');
-        
+
         const res = await fetch(`${BASE_URL}/integrations/profile/?email=${encodeURIComponent(this.#email)}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${this.#accessToken}` }
@@ -183,7 +183,7 @@ class Auth{
 
         console.log(`Auth: Access token validity - ${tokenValidity}`);
 
-        if(tokenValidity && typeof tokenValidity !== 'boolean'){
+        if (tokenValidity && typeof tokenValidity !== 'boolean') {
             throw new Exceptions.InvalidTokenException('Softphone.login', tokenValidity);
         }
 
@@ -216,7 +216,7 @@ class Auth{
             // If they don't have permission, the login process fails here.
             throw new Exceptions.PermissionDeniedException('retrieveUserRoles', 'User does not have permission to use the SDK.');
         }
-        
+
         console.log('Auth: SDK access permission verified.');
     }
 
@@ -249,33 +249,49 @@ class Auth{
 
     private async exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<{ access_token: string, refresh_token: string }> {
         console.log('Auth: Exchanging authorization code for tokens...');
-        const credentials = `${clientId}:${clientSecret}`;
-        console.log(`Auth: Using credentials - ${credentials}`);
-        const encodedCredentials = Buffer.from(credentials).toString('base64');
-        console.log(`Auth: Encoded credentials - ${encodedCredentials}`);
-        const url = `${BASE_URL}/oauth/token/?code=${code}`;
-        console.log(`Auth: Token endpoint URL - ${url}`);
+        try {
+            const credentials = `${clientId}:${clientSecret}`;
+            console.log(`Auth: Using credentials - ${credentials}`);
+            const encodedCredentials = Buffer.from(credentials).toString('base64');
+            console.log(`Auth: Encoded credentials - ${encodedCredentials}`);
+            const url = `${BASE_URL}/oauth/token/?code=${code}`;
+            console.log(`Auth: Token endpoint URL - ${url}`);
 
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: { 'Authorization': `Bearer ${encodedCredentials}` },
-        });
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: { 'Authorization': `Bearer ${encodedCredentials}` },
+            });
 
-        console.log(`Auth: Token endpoint response status - ${response.status}`);
+            console.log(`Auth: Token endpoint response status - ${response.status}`);
 
-        const data = await response.json();
-        if (response.ok && data.success) {
-            return { access_token: data.access_token, refresh_token: data.refresh_token };
-        } else {
-            throw new Exceptions.UnauthorizedException('exchangeCodeForToken', data.message);
+            const data = await response.json();
+            if (response.ok && data.success) {
+                return { access_token: data.access_token, refresh_token: data.refresh_token };
+            } else {
+                throw new Exceptions.UnauthorizedException('exchangeCodeForToken', data.message);
+            }
+
+        } catch (error) {
+            console.error('Auth: Error in exchangeCodeForToken:', error);
+
+            // If we already threw a specific SDK exception, rethrow it
+            if (error instanceof Exceptions.UnauthorizedException) {
+                throw error;
+            }
+
+            // Catch generic network errors (e.g., "Network request failed") or JSON syntax errors
+            throw new Exceptions.UnknownException(
+                'exchangeCodeForToken',
+                error instanceof Error ? error.message : 'Unknown error during token exchange'
+            );
         }
     }
-    
+
     get getSipToken() {
         return this.sipToken
     }
 
-    get getEmail():string | null {
+    get getEmail(): string | null {
         return this.#email;
     }
 
