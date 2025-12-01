@@ -40,20 +40,6 @@ export class InvalidTokenException extends BaseException {
     }
 }
 
-export class InvalidSessionTypeException extends BaseException {
-    constructor(source: string, validType: string) {
-        super('InvalidSessionTypeException', source, 'Operation not valid for this session type.');
-        this.details = JSON.stringify({ validSessionType: validType });
-    }
-}
-
-export class InvalidSessionStateException extends BaseException {
-    constructor(source: string, details: string) {
-        super('InvalidSessionStateException', source, 'Operation not valid for the current session state.');
-        this.details = JSON.stringify(details);
-    }
-}
-
 export class PermissionDeniedException extends BaseException {
     constructor(source: string, details: string) {
         super('PermissionDeniedException', source, 'Permission denied.');
