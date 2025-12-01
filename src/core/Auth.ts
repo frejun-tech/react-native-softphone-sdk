@@ -50,7 +50,7 @@ class Auth {
     }
 
     public async login({ clientId }: { clientId: string }): Promise<void> {
-        await Linking.openURL(`https://dev.frejun.com/oauth/authorize/?client_id=${clientId}`);
+        await Linking.openURL(`https://product.frejun.com/oauth/authorize/?client_id=${clientId}`);
     }
 
     public async handleRedirect(url: string, { clientId, clientSecret }: { clientId: string, clientSecret: string }): Promise<void> {
