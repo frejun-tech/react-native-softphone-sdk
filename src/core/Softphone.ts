@@ -90,8 +90,6 @@ class Softphone {
             if (!this.#userAgent) {
                 this.#userAgent = new UserAgent(config);
                 await this.#userAgent.startUA();
-            } else {
-                await this.#userAgent.reconnect();
             }
 
             if (!this.#appStateSubscription) {
