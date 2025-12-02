@@ -20,7 +20,7 @@ import { Softphone } from 'react-native-softphone-sdk';
 
 const FREJUN_CREDENTIALS = {
     clientId: '<Client-id>',
-    clientSecret: '<Client-Secret>',
+    clientSecret: '<Client-secret>',
 };
 
 type CallState = 'Idle' | 'Dialing' | 'Ringing' | 'Incoming' | 'Active';
@@ -90,6 +90,7 @@ const App = () => {
         init();
 
         const sub = Linking.addEventListener('url', async (event) => {
+            console.log("URL Received:", event.url);
             if (event.url.includes('?code=')) {
                 setIsLoading(true);
                 try {
