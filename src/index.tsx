@@ -1,5 +1,10 @@
-import SoftphoneSdk from './NativeSoftphoneSdk';
+import Softphone from './core/Softphone';
+import * as Exceptions from './exceptions';
+import { registerGlobals } from 'react-native-webrtc';
 
-export function multiply(a: number, b: number): number {
-  return SoftphoneSdk.multiply(a, b);
-}
+registerGlobals();
+
+export {
+  Softphone,
+  Exceptions
+};
