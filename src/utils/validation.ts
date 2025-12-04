@@ -19,7 +19,7 @@ export const isTokenValid = (token: string) => {
     }
 }
 
-export const validatePhoneNumber = (phoneNumber: any) => {
+export const validatePhoneNumber = (phoneNumber: string) => {
     const phoneUtil = libphonenumber.PhoneNumberUtil.getInstance();
     try {
         const parsedNumber = phoneUtil.parseAndKeepRawInput(phoneNumber);

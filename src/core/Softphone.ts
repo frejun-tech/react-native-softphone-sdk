@@ -153,8 +153,14 @@ class Softphone {
             if (!number || !number.trim()?.length) {
                 throw new Exceptions.MissingParameterException('Softphone.makeCall', ['number']);
             }
+
             if (!validatePhoneNumber(number)) {
-                throw new Exceptions.InvalidValueException('Softphone.makeCall', 'number', number, ['Valid Phone Number']);
+                throw new Exceptions.InvalidValueException(
+                    'Softphone.makeCall', 
+                    'number', 
+                    number, 
+                    ['E.164 format (e.g., +[Country Code][Number])']
+                );
             }
 
             // 3. Determine the "From" Number (Caller ID)
