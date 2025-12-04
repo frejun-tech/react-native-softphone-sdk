@@ -84,7 +84,7 @@ class Auth {
             const credentials = `${clientId}:${clientSecret}`;
             const encodedCredentials = Buffer.from(credentials).toString('base64');
 
-            const response = await fetch(`${BASE_URL}/oauth/token/refresh/`, {
+            const response = await fetch(`${BASE_URL}/v2/oauth/token/refresh/`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${encodedCredentials}`,
@@ -121,7 +121,7 @@ class Auth {
         if (!this.#accessToken || !this.#email) {
             throw new Exceptions.InvalidTokenException('registerSoftphone', 'INVALID');
         }
-        const res = await fetch(BASE_URL + `/calls/register-softphone/?email=${encodeURIComponent(this.#email)}`, {
+        const res = await fetch(BASE_URL + `/v1/calls/register-softphone/?email=${encodeURIComponent(this.#email)}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${this.#accessToken}` }
         });
@@ -141,7 +141,7 @@ class Auth {
         console.log('Auth: Retrieving user profile...');
         if (!this.#accessToken || !this.#email) throw new Exceptions.InvalidTokenException('retrieveUserProfile', 'INVALID');
 
-        const res = await fetch(`${BASE_URL}/integrations/profile/?email=${encodeURIComponent(this.#email)}`, {
+        const res = await fetch(`${BASE_URL}/v2/integrations/profile/?email=${encodeURIComponent(this.#email)}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${this.#accessToken}` }
         });
@@ -178,7 +178,7 @@ class Auth {
         console.log('Auth: Retrieving user roles...');
         if (!this.#accessToken || !this.#email) throw new Exceptions.InvalidTokenException('retrieveUserRoles', 'INVALID');
 
-        const res = await fetch(`${BASE_URL}/auth/retrieve-user-roles/?email=${encodeURIComponent(this.#email)}`, {
+        const res = await fetch(`${BASE_URL}/v1/auth/retrieve-user-roles/?email=${encodeURIComponent(this.#email)}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${this.#accessToken}` }
         });
@@ -222,7 +222,7 @@ class Auth {
         try {
             const credentials = `${clientId}:${clientSecret}`;
             const encodedCredentials = Buffer.from(credentials).toString('base64');
-            const url = `${BASE_URL}/oauth/token/?code=${code}`;
+            const url = `${BASE_URL}/v2/oauth/token/?code=${code}`;
 
             const response = await fetch(url, {
                 method: 'GET',
