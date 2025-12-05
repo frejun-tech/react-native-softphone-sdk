@@ -83,6 +83,18 @@ Add the usage description to `ios/YourProject/Info.plist`:
 <string>We need access to your microphone to make VoIP calls.</string>
 ```
 
+#### 2. Deep Linking (OAuth Redirect)
+To enable OAuth redirect on iOS, add a URL scheme.
+**Steps:**
+1. Open Xcode → Select target → Info tab
+2. Under **URL Types**, click **+**
+3. Add:
+- Identifier: `<Your app identifier>`
+- URL Schemes:
+```
+<Your app scheme>
+```
+
 ## Usage Guide
 
 ### 1. Initialization
@@ -209,6 +221,27 @@ const handleHangup = async () => {
 };
 ```
 
+### 5. Using Virtual Numbers
+
+Fetch the list of numbers assigned to the user to build a "Select Caller ID" UI.
+
+```javascript
+const numbers = softphone.getVirtualNumbers();
+// Returns: [{ name: "Office", country_code: "+91", number: "...", ... }, ...]
+```
+
+### 6. Manual Reconnect
+
+If the user goes offline, you can offer a retry button.
+
+```javascript
+try {
+    await softphone.connect();
+} catch (e) {
+    Alert.alert("Still offline");
+}
+```
+
 ## API Reference
 
 ### `Softphone` Class
@@ -221,6 +254,8 @@ const handleHangup = async () => {
 | `start(listeners)` | `Promise<void>` | Connects to WebSocket and registers SIP user. |
 | `makeCall(to, from)` | `Promise<boolean>` | Initiates an outbound call. Updates Primary VN if needed. |
 | `logout()` | `Promise<void>` | Clears session, stops UserAgent, and removes tokens. |
+connect() | `Promise<void>` | Connects to WebSocket and registers SIP user. |
+getVirtualNumbers() | `Promise<void>` | Connects to WebSocket and registers SIP user. |
 
 ### `Session` Class
 
