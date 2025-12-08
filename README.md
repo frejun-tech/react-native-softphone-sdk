@@ -5,12 +5,12 @@ A robust TypeScript SDK for integrating FreJun VoIP softphone capabilities into 
 ## 🌟 Features
 
 *   **VoIP Calling**: Built on \`sip.js\` and \`react-native-webrtc\` for high-quality audio calls.
-*   **Flexible Auth**: Support for standard **OAuth2** (Browser) and **Direct Login** (Access Token).
-*   **Auto-Refresh**: Automatically handles 401 errors by refreshing tokens (if a refresh token is provided).
+*   **Flexible Auth**: Support for **Standard Browser OAuth** and **Direct Code Exchange**.
+*   **Secure Auth**: OAuth2 flow with **Automatic Token Refresh** (handles 401 Unauthorized automatically).
 *   **Resilience**: Auto-reconnection logic when the app comes to the foreground.
 *   **Call Forking Support**: Intelligently handles duplicate SIP invites to prevent "Ghost Hangups".
 *   **Multiple Caller IDs**: Fetch and switch between available Virtual Numbers from the user profile.
-*   **Encrypted Storage**: Securely persists session tokens using hardware-backed storage.
+*   **Encrypted Storage**: Securely persists session tokens.
 
 ---
 
@@ -54,15 +54,16 @@ A robust TypeScript SDK for integrating FreJun VoIP softphone capabilities into 
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     \`\`\`
 
-2.  **Deep Linking (For OAuth Flow Only)**:
-    If you use the standard OAuth login, add this intent filter to your \`<activity>\` tag.
+2.  **Deep Linking (OAuth Redirect)**:
+    Required only if using **Standard Browser Login**. Add this intent filter inside your \`<activity>\` tag.
 
     \`\`\`xml
     <intent-filter>
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
         <category android:name="android.intent.category.BROWSABLE" />
-        <data android:scheme="frejun" /> <!-- Replace with your specific scheme -->
+        <!-- Replace 'frejun' with your specific scheme -->
+        <data android:scheme="frejun" /> 
     </intent-filter>
     \`\`\`
 
@@ -76,14 +77,14 @@ A robust TypeScript SDK for integrating FreJun VoIP softphone capabilities into 
     \`\`\`
 
 2.  **Background Modes**:
-    Enable **"Audio, AirPlay, and Picture in Picture"** and **"Voice over IP"** in Xcode capabilities.
+    Enable **"Audio, AirPlay, and Picture in Picture"** and **"Voice over IP"** in Xcode Project Capabilities.
 
 ---
 
 ## 🚀 Usage Guide
 
 ### 1. Initialization
-Initialize the SDK in your root component. This checks for an existing session in storage and attempts to restore it.
+Initialize the SDK once, preferably in your App's root component.
 
 \`\`\`typescript
 import { Softphone } from 'react-native-softphone-sdk';
@@ -95,33 +96,38 @@ const CREDENTIALS = {
 
 // ... inside useEffect
 const init = async () => {
-    const softphoneInstance = await Softphone.initialize(CREDENTIALS);
-    if (softphoneInstance) {
-        setSoftphone(softphoneInstance); // User is already logged in
+    // Restore session from storage
+    const restoredSoftphone = await Softphone.initialize(CREDENTIALS);
+    if (restoredSoftphone) {
+        setSoftphone(restoredSoftphone); 
     }
 };
 init();
 \`\`\`
 
-### 2. Authentication
-The SDK supports two ways to log in.
+### 2. Authentication (Login)
 
-#### Option A: Standard OAuth (Browser Flow)
-Use this if you want the user to log in via the FreJun web interface.
+You have two options for logging in users.
+
+#### Option A: Standard Browser Flow
+Use this if you want the SDK to open the system browser for FreJun login.
 
 \`\`\`typescript
-// 1. Trigger Login (Opens Browser)
+import { Linking } from 'react-native';
+
 const handleLogin = async () => {
+    // 1. Opens Browser
     await Softphone.login(); 
 };
 
-// 2. Handle Deep Link Redirect
+// 2. Handle Redirect (Deep Link)
 useEffect(() => {
     const sub = Linking.addEventListener('url', async (event) => {
         if (event.url.includes('?code=')) {
             try {
-                const instance = await Softphone.handleRedirect(event.url);
-                setSoftphone(instance);
+                // Exchange code for token
+                const softphoneInstance = await Softphone.handleRedirect(event.url);
+                setSoftphone(softphoneInstance);
             } catch (e) {
                 console.error("Login failed", e);
             }
@@ -131,28 +137,33 @@ useEffect(() => {
 }, []);
 \`\`\`
 
-#### Option B: Direct Login (Manual)
-Use this if you already have the \`accessToken\` (e.g., from your own backend API).
+#### Option B: Direct Login (Custom Integration)
+Use this if you have already obtained an **Authorization Code** via your own API or WebView and want to initialize the SDK directly without opening a browser.
 
 \`\`\`typescript
 const handleDirectLogin = async () => {
     try {
-        const instance = await Softphone.login({
-            accessToken: 'YOUR_ACCESS_TOKEN',
-            email: 'user@example.com',
-            refreshToken: 'OPTIONAL_REFRESH_TOKEN' // Highly recommended for auto-refresh
+        const authCode = "CODE_FROM_YOUR_BACKEND";
+        const userEmail = "user@example.com";
+
+        // Pass parameters to login directly
+        const softphoneInstance = await Softphone.login({ 
+            code: authCode, 
+            email: userEmail 
         });
-        
-        // Login successful, session validated and saved
-        setSoftphone(instance);
-    } catch (error) {
-        console.error("Invalid token provided", error);
+
+        if (softphoneInstance) {
+            setSoftphone(softphoneInstance);
+            console.log("Logged in successfully!");
+        }
+    } catch (e) {
+        console.error("Direct login failed", e);
     }
 };
 \`\`\`
 
-### 3. Starting the Engine
-Once authenticated, you must call \`start()\` to connect to the VoIP server.
+### 3. Starting the Engine & Event Listeners
+You must call \`start()\` to connect to the WebSocket.
 
 \`\`\`typescript
 useEffect(() => {
@@ -165,16 +176,18 @@ useEffect(() => {
 
         // ARGS: Type ('Incoming'/'Outgoing'), Session Object, Details
         onCallCreated: (type, session, details) => {
-            console.log(\`Call: \${type}, From/To: \${details.candidate}\`);
-            activeSession.current = session; // IMPORTANT: Store the session
+            console.log(\`Call: \${type}, Candidate: \${details.candidate}\`);
+            activeSession.current = session; // IMPORTANT: Store session ref
             
-            if (type === 'Incoming') { /* Show Incoming UI */ }
+            if (type === 'Incoming') {
+                // Show Answer UI
+            }
         },
 
         onCallAnswered: (session) => { /* Call is live */ },
 
         onCallHangup: (session) => {
-            // Check against active session to avoid "Ghost Hangups" from call forking
+            // IGNORE "Ghost Hangups" from call forking
             if (activeSession.current && activeSession.current !== session) return;
             activeSession.current = null;
         }
@@ -186,20 +199,17 @@ useEffect(() => {
 }, [softphone]);
 \`\`\`
 
-### 4. Making Calls (Outgoing)
+### 4. Managing Calls
 
 \`\`\`typescript
-// Option 1: Use default caller ID from profile
+// --- OUTGOING ---
+// Option 1: Use default caller ID
 await softphone.makeCall('+919876543210');
 
-// Option 2: Use specific Virtual Number
+// Option 2: Use specific Virtual Number (Caller ID)
 await softphone.makeCall('+919876543210', '+918012345678');
-\`\`\`
-*Note: Phone numbers must be in E.164 format (e.g., +91...)*
 
-### 5. Managing Incoming Calls
-
-\`\`\`typescript
+// --- INCOMING ---
 // Answer
 await activeSession.current.answer();
 
@@ -207,24 +217,35 @@ await activeSession.current.answer();
 await activeSession.current.hangup();
 \`\`\`
 
-### 6. Using Virtual Numbers
+### 5. Using Virtual Numbers
+Fetch the list of numbers assigned to the user to build a "Select Caller ID" UI.
+
 \`\`\`typescript
 const numbers = softphone.getVirtualNumbers();
-// Returns: [{ name: "Office", country_code: "+91", number: "...", ... }, ...]
+// Returns: [{ name: "Office", country_code: "+91", number: "...", default_calling_number: true }, ...]
+\`\`\`
+
+### 6. Manual Reconnect
+If the user goes offline, you can offer a retry button.
+
+\`\`\`typescript
+try {
+    await softphone.connect();
+} catch (e) {
+    Alert.alert("Still offline");
+}
 \`\`\`
 
 ---
 
 ## 📡 Handling Background/Killed State
 
-Standard WebSockets close when the app is killed.
+Standard WebSockets die when the app is killed. To receive calls in this state, you must implement **Native VoIP Push**.
 
-1.  **Background (Minimized):** The SDK automatically listens to \`AppState\` and reconnects the socket when the app comes to the foreground.
-2.  **Killed (Closed):**
-    *   **Android:** Requires FCM Data Messages + \`react-native-callkeep\`.
-    *   **iOS:** Requires APNs PushKit (VoIP Push) + \`react-native-callkeep\`.
-
-*This SDK handles the SIP logic once the app is running. You must implement the native push handling in your app layer to wake the device.*
+1.  **Background (App Minimized):** The SDK listens to \`AppState\` changes and automatically reconnects the socket when the app comes to the foreground.
+2.  **Killed (App Closed):**
+    *   **Android:** Requires FCM Data Messages + \`react-native-callkeep\` + Foreground Service.
+    *   **iOS:** Requires APNs PushKit (VoIP Push) + \`react-native-callkeep\` + \`CallKit\`.
 
 ---
 
@@ -232,39 +253,36 @@ Standard WebSockets close when the app is killed.
 
 ### \`Softphone\` Class
 
-| Method | Description |
-| :--- | :--- |
-| \`static initialize(creds)\` | Configures SDK, checks storage for existing session. |
-| \`static login()\` | **(OAuth)** Opens system browser for login flow. |
-| \`static login(credentials)\` | **(Direct)** Logs in via \`{ accessToken, email, refreshToken }\`. |
-| \`static handleRedirect(url)\` | Completes OAuth login from deep link. |
-| \`start(listeners)\` | Connects WebSocket, registers SIP, fetches Profile. |
-| \`connect()\` | Manually attempts to reconnect (e.g., after network loss). |
-| \`makeCall(to, [from])\` | Starts a call. Automatically switches caller ID if needed. |
-| \`getVirtualNumbers()\` | Returns array of available caller IDs. |
-| \`logout()\` | Destroys session, unregisters SIP, clears storage. |
+| Method | Returns | Description |
+| :--- | :--- | :--- |
+| \`static initialize(creds)\` | \`Promise<Softphone \| null>\` | Configures SDK, restores session, checks permissions. |
+| \`static login(params?)\` | \`Promise<Softphone \| void>\` | If params \`{code, email}\` provided, logs in directly. Else, opens browser. |
+| \`static handleRedirect(url)\` | \`Promise<Softphone>\` | Completes browser login from deep link. |
+| \`start(listeners)\` | \`Promise<void>\` | Connects WebSocket, registers SIP, fetches Profile. |
+| \`connect()\` | \`Promise<void>\` | Manually attempts to reconnect the transport. |
+| \`makeCall(to, [from])\` | \`Promise<boolean>\` | Starts a call. Updates user profile if \`from\` differs from default. |
+| \`getVirtualNumbers()\` | \`VirtualNumber[]\` | Returns array of available caller IDs. |
+| \`logout()\` | \`Promise<void>\` | Destroys session, unregisters SIP, clears storage. |
 
 ### \`Session\` Class
 
-Passed in \`onCallCreated\`.
-
 | Method | Description |
 | :--- | :--- |
-| \`answer()\` | Accepts an incoming call. |
-| \`hangup()\` | Ends the call (Cancel, Reject, or Bye). |
+| \`answer()\` | Accepts incoming call (sends 200 OK). |
+| \`hangup()\` | Ends call (Cancel/Reject/Bye). |
 
 ---
 
 ## ⚠️ Troubleshooting
 
 **Q: \`TypeError: answer is not a function\`**
-*   **Fix:** Ensure your \`onCallCreated\` listener handles 3 arguments: \`(type, session, details)\`. You call \`answer()\` on the \`session\` object.
+*   **Fix:** Ensure \`onCallCreated\` listener receives **3 arguments**: \`(type, session, details)\`. You are likely trying to call \`.answer()\` on the \`details\` object instead of the \`session\`.
 
-**Q: 401 Unauthorized**
-*   **Fix:** If you used **Direct Login**, ensure you provided a valid \`refreshToken\`. Without it, the SDK cannot auto-renew the session when the \`accessToken\` expires.
+**Q: Calls drop immediately with "Ghost Hangup"**
+*   **Fix:** This happens due to SIP Call Forking. Ensure your \`onCallHangup\` listener checks \`if (activeSession.current !== session) return;\`.
 
-**Q: Calls drop immediately ("Ghost Hangup")**
-*   **Fix:** Ensure your \`onCallHangup\` listener checks if the hanging-up session matches your \`activeSession.current\`. This filters out termination events from duplicate SIP registration paths.
+**Q: 401 Unauthorized Errors**
+*   **Fix:** The SDK has **Auto-Refresh**. It will catch the error, refresh the token, retry the request, and update storage automatically. No action needed.
 
 ---
 
