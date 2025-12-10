@@ -255,8 +255,8 @@ Standard WebSockets die when the app is killed. To receive calls in this state, 
 
 | Method | Returns | Description |
 | :--- | :--- | :--- |
-| \`static initialize(creds)\` | \`Promise<Softphone \| null>\` | Configures SDK, restores session, checks permissions. |
-| \`static login(params?)\` | \`Promise<Softphone \| void>\` | If params \`{code, email}\` provided, logs in directly. Else, opens browser. |
+| \`static initialize(creds)\` | \`Promise<Softphone | null>\` | Configures SDK, restores session, checks permissions. |
+| \`static login(params?)\` | \`Promise<Softphone | void>\` | If params \`{code, email}\` provided, logs in directly. Else, opens browser. |
 | \`static handleRedirect(url)\` | \`Promise<Softphone>\` | Completes browser login from deep link. |
 | \`start(listeners)\` | \`Promise<void>\` | Connects WebSocket, registers SIP, fetches Profile. |
 | \`connect()\` | \`Promise<void>\` | Manually attempts to reconnect the transport. |
