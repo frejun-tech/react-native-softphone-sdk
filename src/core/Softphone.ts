@@ -8,6 +8,12 @@ import UserAgent from './UserAgent';
 import { TokenManager } from "../services/TokenManager";
 import { AppState, type AppStateStatus } from 'react-native';
 
+export interface DirectLoginCredentials {
+    accessToken: string;
+    email: string;
+    refreshToken?: string;
+}
+
 class Softphone {
     static #clientId: string | null = null;
     static #clientSecret: string | null = null;
@@ -45,35 +51,32 @@ class Softphone {
         return null;
     }
 
-    public static async login(params?: { code: string, email: string }): Promise<Softphone | void> {
+    public static async login(credentials?: DirectLoginCredentials): Promise<Softphone | void> {
         this.ensureInitialized('login');
 
-        // ✅ SCENARIO B: Direct Login with Code
-        if (params && params.code && params.email) {
-            console.log('Softphone: Performing direct login with credentials...');
-
+        // CASE A: Direct Login (Parameters provided)
+        if (credentials) {
+            console.log('Softphone: Performing direct login with provided credentials.');
             const auth = new Auth();
 
-            // Perform the exchange (Get Access + Refresh tokens)
-            await auth.loginWithAuthCode(
-                params.code,
-                params.email,
-                this.#clientId!,
-                this.#clientSecret!
+            // This will throw an error if the provided token is invalid
+            await auth.manualLogin(
+                credentials.accessToken,
+                credentials.email,
+                credentials.refreshToken
             );
 
-            if (auth.isLoggedIn()) {
-                console.log('Softphone: Direct login successful. Returning instance.');
-                return new Softphone(auth);
-            } else {
-                throw new Exceptions.UnauthorizedException('login', 'Direct login failed to establish session.');
-            }
+            console.log('Softphone: Direct login successful. Returning instance.');
+            return new Softphone(auth);
         }
 
-        // ✅ SCENARIO A: Standard Browser Flow
-        console.log('Softphone: No credentials provided. Opening browser for OAuth...');
-        const tempAuth = new Auth();
-        await tempAuth.login({ clientId: this.#clientId! });
+        // CASE B: Standard OAuth Flow (No parameters)
+        else {
+            console.log('Softphone: Performing standard OAuth login.');
+            const tempAuth = new Auth();
+            await tempAuth.login({ clientId: this.#clientId! });
+            // Returns void, app waits for Deep Link
+        }
     }
 
     public static async handleRedirect(url: string): Promise<Softphone> {

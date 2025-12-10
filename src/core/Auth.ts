@@ -4,6 +4,7 @@ import type { TokenData } from "../services/TokenManager";
 import { TokenManager } from "../services/TokenManager";
 import { Linking } from "react-native";
 import { Buffer } from 'buffer';
+import { isTokenValid } from '../utils/validation';
 
 export interface SipCredentials {
     username: string;
@@ -49,39 +50,55 @@ class Auth {
         return null;
     }
 
-    public async login({ clientId }: { clientId: string }): Promise<void> {
-        await Linking.openURL(`https://product.frejun.com/oauth/authorize/?client_id=${clientId}`);
+    public async manualLogin(accessToken: string, email: string, refreshToken?: string): Promise<void> {
+        console.log('Auth: processing manual login...');
+
+        if (!accessToken || !email) {
+            throw new Exceptions.MissingParameterException('manualLogin', ['accessToken', 'email']);
+        }
+
+        const tokenValidationStatus = isTokenValid(accessToken);
+
+        // isTokenValid returns true, 'INVALID', or 'EXPIRED'
+        if (tokenValidationStatus !== true) {
+            console.error(`Auth: Manual login failed. Token is ${tokenValidationStatus}`);
+            throw new Exceptions.InvalidTokenException('manualLogin', tokenValidationStatus);
+        }
+
+        this.#accessToken = accessToken;
+        this.#email = email;
+        this.#refreshToken = refreshToken || null;
+
+        if (!this.#refreshToken) {
+            console.warn('Auth: No Refresh Token provided in manual login. Auto-refresh mechanism will not work when Access Token expires.');
+        }
+
+        // Verify the provided token immediately by fetching roles
+        // This ensures we don't save an invalid session
+        try {
+            console.log('Auth: Verifying provided access token...');
+            await this.retrieveUserRoles();
+        } catch (error) {
+            console.error('Auth: Manual login failed verification.', error);
+            // Reset state if verification fails
+            this.#accessToken = null;
+            this.#email = null;
+            this.#refreshToken = null;
+            throw error;
+        }
+
+        // If successful, persist to storage
+        await TokenManager.save({
+            accessToken: this.#accessToken!,
+            refreshToken: this.#refreshToken || '', // Save empty string if null to satisfy interface
+            email: this.#email!
+        });
+
+        console.log('Auth: Manual session verified and saved.');
     }
 
-    public async loginWithAuthCode(
-        code: string,
-        email: string,
-        clientId: string,
-        clientSecret: string
-    ): Promise<void> {
-        console.log('Auth: Attempting direct login with provided code...');
-
-        // 1. Exchange the code for Access AND Refresh Tokens
-        // This ensures the session is fully hydrated and auto-refresh will work.
-        const tokenData = await this.exchangeCodeForToken(code, clientId, clientSecret);
-
-        this.#accessToken = tokenData.access_token;
-        this.#refreshToken = tokenData.refresh_token; // We successfully got a refresh token
-        this.#email = email;
-
-        console.log('Auth: Tokens retrieved. Verifying permissions...');
-
-        // 2. Verify Permissions (Standard check)
-        await this.retrieveUserRoles();
-
-        console.log('Auth: Permissions verified. Session active.');
-
-        // 3. Save to Storage immediately
-        await TokenManager.save({
-            accessToken: this.#accessToken,
-            refreshToken: this.#refreshToken,
-            email: this.#email
-        });
+    public async login({ clientId }: { clientId: string }): Promise<void> {
+        await Linking.openURL(`https://product.frejun.com/oauth/authorize/?client_id=${clientId}`);
     }
 
     public async handleRedirect(url: string, { clientId, clientSecret }: { clientId: string, clientSecret: string }): Promise<void> {
