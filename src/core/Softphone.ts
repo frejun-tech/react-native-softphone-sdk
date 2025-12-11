@@ -8,6 +8,12 @@ import UserAgent from './UserAgent';
 import { TokenManager } from "../services/TokenManager";
 import { AppState, type AppStateStatus } from 'react-native';
 
+export interface DirectLoginCredentials {
+    accessToken: string;
+    email: string;
+    refreshToken: string; 
+}
+
 class Softphone {
     static #clientId: string | null = null;
     static #clientSecret: string | null = null;
@@ -45,10 +51,31 @@ class Softphone {
         return null;
     }
 
-    public static async login(): Promise<void> {
+    public static async login(credentials?: DirectLoginCredentials): Promise<Softphone | void> {
         this.ensureInitialized('login');
-        const tempAuth = new Auth();
-        await tempAuth.login({ clientId: this.#clientId! });
+
+        // CASE A: Direct Login (Parameters provided)
+        if (credentials) {
+            console.log('Softphone: Performing direct login with provided credentials.');
+            const auth = new Auth();
+
+            // This will throw an error if the provided token is invalid
+            await auth.manualLogin(
+                credentials.accessToken,
+                credentials.email,
+                credentials.refreshToken // Now required
+            );
+
+            console.log('Softphone: Direct login successful. Returning instance.');
+            return new Softphone(auth);
+        }
+
+        // CASE B: Standard OAuth Flow (No parameters)
+        else {
+            console.log('Softphone: Performing standard OAuth login.');
+            const tempAuth = new Auth();
+            await tempAuth.login({ clientId: this.#clientId! });
+        }
     }
 
     public static async handleRedirect(url: string): Promise<Softphone> {
@@ -156,9 +183,9 @@ class Softphone {
 
             if (!validatePhoneNumber(number)) {
                 throw new Exceptions.InvalidValueException(
-                    'Softphone.makeCall', 
-                    'number', 
-                    number, 
+                    'Softphone.makeCall',
+                    'number',
+                    number,
                     ['E.164 format (e.g., +[Country Code][Number])']
                 );
             }

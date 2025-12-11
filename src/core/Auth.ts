@@ -4,6 +4,7 @@ import type { TokenData } from "../services/TokenManager";
 import { TokenManager } from "../services/TokenManager";
 import { Linking } from "react-native";
 import { Buffer } from 'buffer';
+import { isTokenValid } from '../utils/validation';
 
 export interface SipCredentials {
     username: string;
@@ -47,6 +48,74 @@ class Auth {
             return new Auth(tokenData);
         }
         return null;
+    }
+
+    public async manualLogin(
+        accessToken: string, 
+        email: string, 
+        refreshToken: string, 
+        clientId?: string, 
+        clientSecret?: string
+    ): Promise<void> {
+        console.log('Auth: processing manual login...');
+
+        // 1. Basic Validation
+        if (!accessToken || !email || !refreshToken) {
+            throw new Exceptions.MissingParameterException('manualLogin', ['accessToken', 'email', 'refreshToken']);
+        }
+
+        // 2. Set state temporarily so refreshAccessToken has access to the refreshToken
+        this.#accessToken = accessToken;
+        this.#email = email;
+        this.#refreshToken = refreshToken;
+
+        const tokenValidationStatus = isTokenValid(accessToken);
+
+        // 3. Handle Expired Token
+        if (tokenValidationStatus === 'EXPIRED') {
+            console.log('Auth: Token is expired. Attempting refresh inside manualLogin...');
+
+            if (clientId && clientSecret) {
+                // Attempt to refresh
+                const refreshSuccess = await this.refreshAccessToken(clientId, clientSecret);
+            
+                if (!refreshSuccess) {
+                    console.error('Auth: Refresh failed during manualLogin.');
+                    this.logout(); // Clean up partial state
+                    throw new Exceptions.InvalidTokenException('manualLogin', 'EXPIRED');
+                }
+                // If success, this.#accessToken is now updated with the new token
+        } else {
+            console.warn('Auth: Token expired and no client credentials provided for refresh.');
+                this.logout();
+                throw new Exceptions.InvalidTokenException('manualLogin', 'EXPIRED');
+            }
+        } 
+        // 4. Handle Invalid Token (Malformed)
+        else if (tokenValidationStatus === 'INVALID') {
+            console.error('Auth: Token is invalid.');
+            this.logout();
+            throw new Exceptions.InvalidTokenException('manualLogin', 'INVALID');
+        }
+
+        // 5. Verify Permissions (using the valid or newly refreshed token)
+        try {
+            console.log('Auth: Verifying access token...');
+            await this.retrieveUserRoles();
+        } catch (error) {
+            console.error('Auth: Manual login failed verification.', error);
+            this.logout();
+            throw error;
+        }
+
+        // 6. Persist to storage
+        await TokenManager.save({
+            accessToken: this.#accessToken!,
+            refreshToken: this.#refreshToken!,
+            email: this.#email!
+        });
+
+        console.log('Auth: Manual session verified and saved.');
     }
 
     public async login({ clientId }: { clientId: string }): Promise<void> {

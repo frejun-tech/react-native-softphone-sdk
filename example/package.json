@@ -10,7 +10,6 @@
     "build:ios": "react-native build-ios --mode Debug"
   },
   "dependencies": {
-    "@notifee/react-native": "^9.1.8",
     "buffer": "^5.7.1",
     "events": "^3.3.0",
     "google-libphonenumber": "^3.2.43",
