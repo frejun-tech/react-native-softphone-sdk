@@ -15,7 +15,6 @@ import {
     Modal,
     FlatList
 } from 'react-native';
-import notifee, { AndroidImportance } from '@notifee/react-native';
 import { Softphone } from 'react-native-softphone-sdk';
 
 const FREJUN_CREDENTIALS = {
@@ -24,26 +23,6 @@ const FREJUN_CREDENTIALS = {
 };
 
 type CallState = 'Idle' | 'Dialing' | 'Ringing' | 'Incoming' | 'Active';
-
-async function startForegroundService() {
-    if (Platform.OS !== 'android') return;
-    const channelId = await notifee.createChannel({
-        id: 'voip-service',
-        name: 'VoIP Background Service',
-        importance: AndroidImportance.LOW,
-    });
-    await notifee.displayNotification({
-        id: 'foreground-service',
-        title: 'Softphone Active',
-        body: 'Listening for incoming calls...',
-        android: {
-            channelId,
-            asForegroundService: true,
-            ongoing: true,
-            pressAction: { id: 'default' },
-        },
-    });
-}
 
 const App = () => {
     const [softphone, setSoftphone] = useState<Softphone | null>(null);
@@ -68,12 +47,6 @@ const App = () => {
         setCallState(newState);
         callStateRef.current = newState;
     };
-
-    useEffect(() => {
-        if (softphone) {
-            startForegroundService();
-        }
-    }, [softphone]);
 
     // 1. INITIALIZATION
     useEffect(() => {
