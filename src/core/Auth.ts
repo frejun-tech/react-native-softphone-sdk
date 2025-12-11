@@ -75,16 +75,16 @@ class Auth {
         if (tokenValidationStatus === 'EXPIRED') {
             console.log('Auth: Token is expired. Attempting refresh inside manualLogin...');
 
-        if (clientId && clientSecret) {
-            // Attempt to refresh
-            const refreshSuccess = await this.refreshAccessToken(clientId, clientSecret);
+            if (clientId && clientSecret) {
+                // Attempt to refresh
+                const refreshSuccess = await this.refreshAccessToken(clientId, clientSecret);
             
-            if (!refreshSuccess) {
-                console.error('Auth: Refresh failed during manualLogin.');
-                this.logout(); // Clean up partial state
-                throw new Exceptions.InvalidTokenException('manualLogin', 'EXPIRED');
-            }
-            // If success, this.#accessToken is now updated with the new token
+                if (!refreshSuccess) {
+                    console.error('Auth: Refresh failed during manualLogin.');
+                    this.logout(); // Clean up partial state
+                    throw new Exceptions.InvalidTokenException('manualLogin', 'EXPIRED');
+                }
+                // If success, this.#accessToken is now updated with the new token
         } else {
             console.warn('Auth: Token expired and no client credentials provided for refresh.');
                 this.logout();

@@ -144,8 +144,7 @@ Use this if you have already obtained an **Authorization Code** via your own API
 const handleDirectLogin = async () => {
     try {
         // Pass credentials (accessToken, email, refreshToken) directly
-        // Note: refreshToken is mandatory to ensure session continuity
-        const softphoneInstance = await Softphone.login({ 
+        const softphoneInstance = await Softphone.login({
             accessToken: "YOUR_ACCESS_TOKEN", 
             email: "user@example.com",
             refreshToken: "YOUR_REFRESH_TOKEN"
@@ -254,8 +253,8 @@ Standard WebSockets die when the app is killed. To receive calls in this state, 
 
 | Method | Returns | Description |
 | :--- | :--- | :--- |
-| `static initialize(creds)` | `Promise<Softphone \|null>` | Configures SDK, restores session, checks permissions. |
-| `static login(params?)` | `Promise<Softphone \| void>` | If params `{accessToken, email, refreshToken}` provided, logs in directly. Else, opens browser. |
+| `static initialize(creds)` | `Promise<Softphone \| null>` | Configures SDK, restores session, checks permissions. |
+| `static login(params?)` | `Promise<Softphone \| void>` | If params `{accessToken, email, refreshToken}` provided, logs in directly. <br> **Note:** `clientId` and `clientSecret` are only used to refresh the token if the provided `accessToken` is expired. Else, opens browser. |
 | `static handleRedirect(url)` | `Promise<Softphone>` | Completes browser login from deep link. |
 | `start(listeners)` | `Promise<void>` | Connects WebSocket, registers SIP, fetches Profile. |
 | `connect()` | `Promise<void>` | Manually attempts to reconnect the transport. |
