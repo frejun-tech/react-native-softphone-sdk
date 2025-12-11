@@ -50,51 +50,45 @@ class Auth {
         return null;
     }
 
-    public async manualLogin(accessToken: string, email: string, refreshToken?: string): Promise<void> {
-        console.log('Auth: processing manual login...');
+public async manualLogin(accessToken: string, email: string, refreshToken: string): Promise<void> {
+    console.log('Auth: processing manual login...');
 
-        if (!accessToken || !email) {
-            throw new Exceptions.MissingParameterException('manualLogin', ['accessToken', 'email']);
-        }
+    // 1. Validation: Added !refreshToken check requested by reviewer
+    if (!accessToken || !email || !refreshToken) {
+        throw new Exceptions.MissingParameterException('manualLogin', ['accessToken', 'email', 'refreshToken']);
+    }
 
-        const tokenValidationStatus = isTokenValid(accessToken);
+    const tokenValidationStatus = isTokenValid(accessToken);
 
-        // isTokenValid returns true, 'INVALID', or 'EXPIRED'
-        if (tokenValidationStatus !== true) {
-            console.error(`Auth: Manual login failed. Token is ${tokenValidationStatus}`);
-            throw new Exceptions.InvalidTokenException('manualLogin', tokenValidationStatus);
-        }
+    if (tokenValidationStatus !== true) {
+        console.error(`Auth: Manual login failed. Token is ${tokenValidationStatus}`);
+        throw new Exceptions.InvalidTokenException('manualLogin', tokenValidationStatus);
+    }
 
-        this.#accessToken = accessToken;
-        this.#email = email;
-        this.#refreshToken = refreshToken || null;
+    this.#accessToken = accessToken;
+    this.#email = email;
+    this.#refreshToken = refreshToken; // No longer nullable
 
-        if (!this.#refreshToken) {
-            console.warn('Auth: No Refresh Token provided in manual login. Auto-refresh mechanism will not work when Access Token expires.');
-        }
+    // Verify the provided token immediately by fetching roles
+    try {
+        console.log('Auth: Verifying provided access token...');
+        await this.retrieveUserRoles();
+    } catch (error) {
+        console.error('Auth: Manual login failed verification.', error);
+        this.#accessToken = null;
+        this.#email = null;
+        this.#refreshToken = null;
+        throw error;
+    }
 
-        // Verify the provided token immediately by fetching roles
-        // This ensures we don't save an invalid session
-        try {
-            console.log('Auth: Verifying provided access token...');
-            await this.retrieveUserRoles();
-        } catch (error) {
-            console.error('Auth: Manual login failed verification.', error);
-            // Reset state if verification fails
-            this.#accessToken = null;
-            this.#email = null;
-            this.#refreshToken = null;
-            throw error;
-        }
+    // If successful, persist to storage
+    await TokenManager.save({
+        accessToken: this.#accessToken!,
+        refreshToken: this.#refreshToken!, 
+        email: this.#email!
+    });
 
-        // If successful, persist to storage
-        await TokenManager.save({
-            accessToken: this.#accessToken!,
-            refreshToken: this.#refreshToken || '', // Save empty string if null to satisfy interface
-            email: this.#email!
-        });
-
-        console.log('Auth: Manual session verified and saved.');
+    console.log('Auth: Manual session verified and saved.');
     }
 
     public async login({ clientId }: { clientId: string }): Promise<void> {

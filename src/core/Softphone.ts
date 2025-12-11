@@ -11,7 +11,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 export interface DirectLoginCredentials {
     accessToken: string;
     email: string;
-    refreshToken?: string;
+    refreshToken: string; 
 }
 
 class Softphone {
@@ -63,7 +63,7 @@ class Softphone {
             await auth.manualLogin(
                 credentials.accessToken,
                 credentials.email,
-                credentials.refreshToken
+                credentials.refreshToken // Now required
             );
 
             console.log('Softphone: Direct login successful. Returning instance.');
@@ -75,7 +75,6 @@ class Softphone {
             console.log('Softphone: Performing standard OAuth login.');
             const tempAuth = new Auth();
             await tempAuth.login({ clientId: this.#clientId! });
-            // Returns void, app waits for Deep Link
         }
     }
 
