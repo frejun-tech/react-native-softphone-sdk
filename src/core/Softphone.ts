@@ -1,6 +1,6 @@
 import { BASE_URL } from '../constants';
 import * as Exceptions from '../exceptions';
-import type { Listeners } from '../types';
+import type { Listeners, TokenPayload } from '../types';
 import { validatePhoneNumber } from '../utils/validation';
 import Auth from './Auth';
 import type { VirtualNumber } from './Auth';
@@ -86,15 +86,33 @@ class Softphone {
         throw new Exceptions.UnauthorizedException('handleRedirect', 'Authentication failed.');
     }
 
-    private async executeWithRetry<T>(action: () => Promise<T>): Promise<T> {
+private async executeWithRetry<T>(action: () => Promise<T>): Promise<T> {
         try {
             return await action();
         } catch (error) {
             if (error instanceof Exceptions.InvalidTokenException) {
                 console.log('Softphone: ⚠️ Caught 401. Initiating Auto-Refresh...');
-                if (!Softphone.#clientId || !Softphone.#clientSecret) throw new Exceptions.UnauthorizedException('executeWithRetry', 'Missing Credentials');
+                
+                if (!Softphone.#clientId || !Softphone.#clientSecret) {
+                    throw new Exceptions.UnauthorizedException('executeWithRetry', 'Missing Credentials');
+                }
+
+                // Attempt Refresh
                 const success = await this.#auth.refreshAccessToken(Softphone.#clientId, Softphone.#clientSecret);
-                if (success) return await action();
+                
+                if (success) {
+                    // If listeners are registered and refresh succeeded, notify the app
+                    if (this.#clientListeners && this.#clientListeners.onSessionRefresh) {
+                        const tokens = this.getTokens();
+                        if (tokens) {
+                            console.log('Softphone: Emitting new tokens via onSessionRefresh');
+                            this.#clientListeners.onSessionRefresh(tokens);
+                        }
+                    }
+
+                    return await action();
+                }
+                
                 await this.logout();
                 throw new Exceptions.UnauthorizedException('executeWithRetry', 'Session expired.');
             }
@@ -234,7 +252,7 @@ class Softphone {
     }
 
     async #updatePrimaryVirtualNumber(virtualNumber: any) {
-        const Url = BASE_URL + `/auth/update-userprofile/?email=${encodeURIComponent(this.#auth.getEmail || "")}`;
+        const Url = BASE_URL + `/auth/update-userprofile/?email=${encodeURIComponent(this.#auth.getEmail() || "")}`;
         const response = await fetch(Url, {
             method: 'PATCH',
             headers: { 'authorization': `Bearer ${this.#auth.getAccessToken()}`, 'Content-type': 'application/json' },
@@ -282,6 +300,17 @@ class Softphone {
         const config = { auth: this.#auth, listeners: this.#clientListeners, sipCredentials, edgeDomain };
         this.#userAgent = new UserAgent(config);
         await this.#userAgent.startUA();
+    }
+
+    public getTokens(): TokenPayload | null {
+        const accessToken = this.#auth.getAccessToken();
+        const refreshToken = this.#auth.getRefreshToken();
+        const email = this.#auth.getEmail();
+
+        if (accessToken && refreshToken && email) {
+            return { accessToken, refreshToken, email };
+        }
+        return null;
     }
 }
 
