@@ -6,6 +6,12 @@ export interface CallDetails {
     candidate?: string;
 }
 
+export interface TokenPayload {
+    accessToken: string;
+    refreshToken: string;
+    email: string;
+}
+
 export interface Listeners {
     onConnectionStateChange?: (type: "UserAgentState" | "RegistererState", state: any, isErrorState: boolean, error?: any) => void;
     // Updated to accept Session object
@@ -14,4 +20,5 @@ export interface Listeners {
     onCallAnswered?: (session: Session) => void;
     onCallHangup?: (session: Session) => void;
     onCallTerminating?: (session: Session) => void;
+    onSessionRefresh?: (payload: TokenPayload) => void; 
 }

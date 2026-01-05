@@ -321,8 +321,16 @@ class Auth {
         }
     }
 
+     public getRefreshToken(): string | null {
+        return this.#refreshToken;
+    }
+    
+    // Ensure this getter exists
+    public getEmail(): string | null {
+        return this.#email;
+    }
+
     get getSipToken() { return this.sipToken }
-    get getEmail(): string | null { return this.#email; }
 }
 
 export default Auth;
