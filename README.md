@@ -62,7 +62,7 @@ A robust TypeScript SDK for integrating FreJun VoIP softphone capabilities into 
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
         <category android:name="android.intent.category.BROWSABLE" />
-        <!-- Replace 'frejun' with your specific scheme -->
+        <!-- Replace `frejun` with your specific scheme -->
         <data android:scheme="frejun" /> 
     </intent-filter>
     ```
@@ -84,14 +84,14 @@ A robust TypeScript SDK for integrating FreJun VoIP softphone capabilities into 
 ## 🚀 Usage Guide
 
 ### 1. Initialization
-Initialize the SDK once, preferably in your App's root component.
+Initialize the SDK once, preferably in your App`s root component.
 
 ```typescript
-import { Softphone } from 'react-native-softphone-sdk';
+import { Softphone } from `react-native-softphone-sdk`;
 
 const CREDENTIALS = {
-    clientId: 'YOUR_CLIENT_ID',
-    clientSecret: 'YOUR_CLIENT_SECRET',
+    clientId: `YOUR_CLIENT_ID`,
+    clientSecret: `YOUR_CLIENT_SECRET`,
 };
 
 // ... inside useEffect
@@ -113,7 +113,7 @@ You have two options for logging in users.
 Use this if you want the SDK to open the system browser for FreJun login.
 
 ```typescript
-import { Linking } from 'react-native';
+import { Linking } from `react-native`;
 
 const handleLogin = async () => {
     // 1. Opens Browser
@@ -122,8 +122,8 @@ const handleLogin = async () => {
 
 // 2. Handle Redirect (Deep Link)
 useEffect(() => {
-    const sub = Linking.addEventListener('url', async (event) => {
-        if (event.url.includes('?code=')) {
+    const sub = Linking.addEventListener(`url`, async (event) => {
+        if (event.url.includes(`?code=`)) {
             try {
                 // Exchange code for token
                 const softphoneInstance = await Softphone.handleRedirect(event.url);
@@ -176,12 +176,12 @@ useEffect(() => {
             console.log(`Status: ${state}`); // Registered, Connected, Disconnected
         },
 
-        // ARGS: Type ('Incoming'/'Outgoing'), Session Object, Details
+        // ARGS: Type (`Incoming`/`Outgoing`), Session Object, Details
         onCallCreated: (type, session, details) => {
             console.log(`Call: ${type}, Candidate: ${details.candidate}`);
             activeSession.current = session; // IMPORTANT: Store session ref
             
-            if (type === 'Incoming') {
+            if (type === `Incoming`) {
                 // Show Answer UI
             }
         },
@@ -206,10 +206,10 @@ useEffect(() => {
 ```typescript
 // --- OUTGOING ---
 // Option 1: Use default caller ID
-await softphone.makeCall('+919876543210');
+await softphone.makeCall(`+919876543210`);
 
 // Option 2: Use specific Virtual Number (Caller ID)
-await softphone.makeCall('+919876543210', '+918012345678');
+await softphone.makeCall(`+919876543210`, `+918012345678`);
 
 // --- INCOMING ---
 // Answer
