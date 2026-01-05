@@ -62,7 +62,7 @@ A robust TypeScript SDK for integrating FreJun VoIP softphone capabilities into 
         <action android:name="android.intent.action.VIEW" />
         <category android:name="android.intent.category.DEFAULT" />
         <category android:name="android.intent.category.BROWSABLE" />
-        <!-- Replace `frejun` with your specific scheme -->
+        <!-- Replace 'frejun' with your specific scheme -->
         <data android:scheme="frejun" /> 
     </intent-filter>
     ```
@@ -84,14 +84,14 @@ A robust TypeScript SDK for integrating FreJun VoIP softphone capabilities into 
 ## 🚀 Usage Guide
 
 ### 1. Initialization
-Initialize the SDK once, preferably in your App`s root component.
+Initialize the SDK once, preferably in your App's root component.
 
 ```typescript
-import { Softphone } from `react-native-softphone-sdk`;
+import { Softphone } from 'react-native-softphone-sdk';
 
 const CREDENTIALS = {
-    clientId: `YOUR_CLIENT_ID`,
-    clientSecret: `YOUR_CLIENT_SECRET`,
+    clientId: 'YOUR_CLIENT_ID',
+    clientSecret: 'YOUR_CLIENT_SECRET',
 };
 
 // ... inside useEffect
@@ -113,7 +113,7 @@ You have two options for logging in users.
 Use this if you want the SDK to open the system browser for FreJun login.
 
 ```typescript
-import { Linking } from `react-native`;
+import { Linking } from 'react-native';
 
 const handleLogin = async () => {
     // 1. Opens Browser
@@ -122,8 +122,8 @@ const handleLogin = async () => {
 
 // 2. Handle Redirect (Deep Link)
 useEffect(() => {
-    const sub = Linking.addEventListener(`url`, async (event) => {
-        if (event.url.includes(`?code=`)) {
+    const sub = Linking.addEventListener('url', async (event) => {
+        if (event.url.includes('?code=')) {
             try {
                 // Exchange code for token
                 const softphoneInstance = await Softphone.handleRedirect(event.url);
@@ -138,7 +138,7 @@ useEffect(() => {
 ```
 
 #### Option B: Direct Login (Custom Integration)
-Use this if you have already obtained an **Authorization Code** via your own API or WebView and want to initialize the SDK directly without opening a browser.
+Use this if you have already obtained an **Authorization Code** or tokens via your own API or WebView and want to initialize the SDK directly.
 
 ```typescript
 const handleDirectLogin = async () => {
@@ -165,7 +165,7 @@ const handleDirectLogin = async () => {
 ```
 
 ### 3. Starting the Engine & Event Listeners
-You must call `start()` to connect to the WebSocket.
+You must call `start()` to connect the WebSocket and register for events.
 
 ```typescript
 useEffect(() => {
@@ -173,16 +173,16 @@ useEffect(() => {
 
     const listeners = {
         onConnectionStateChange: (type, state, isError) => {
-            console.log(`Status: ${state}`); // Registered, Connected, Disconnected
+            console.log(`Status: ${state}`); // e.g., Registered, Connected, Disconnected
         },
 
-        // ARGS: Type (`Incoming`/`Outgoing`), Session Object, Details
+        // ARGS: Type ('Incoming'/'Outgoing'), Session Object, Details
         onCallCreated: (type, session, details) => {
             console.log(`Call: ${type}, Candidate: ${details.candidate}`);
             activeSession.current = session; // IMPORTANT: Store session ref
             
-            if (type === `Incoming`) {
-                // Show Answer UI
+            if (type === 'Incoming') {
+                // Show incoming call UI
             }
         },
 
@@ -192,11 +192,16 @@ useEffect(() => {
             // IGNORE "Ghost Hangups" from call forking
             if (activeSession.current && activeSession.current !== session) return;
             activeSession.current = null;
+        },
+        
+        onSessionRefresh: (payload) => {
+            console.log("Session was refreshed automatically. New tokens:", payload);
+            // Optionally, save these new tokens to your app's state management or storage
         }
     };
 
     softphone.start(listeners).then(() => {
-        console.log("Ready to make calls!");
+        console.log("SDK started and ready to make calls!");
     });
 }, [softphone]);
 ```
@@ -205,17 +210,17 @@ useEffect(() => {
 
 ```typescript
 // --- OUTGOING ---
-// Option 1: Use default caller ID
-await softphone.makeCall(`+919876543210`);
+// Option 1: Use default caller ID from user profile
+await softphone.makeCall('+919876543210');
 
-// Option 2: Use specific Virtual Number (Caller ID)
-await softphone.makeCall(`+919876543210`, `+918012345678`);
+// Option 2: Use a specific Virtual Number (Caller ID)
+await softphone.makeCall('+919876543210', '+918012345678');
 
 // --- INCOMING ---
-// Answer
+// Answer an incoming call
 await activeSession.current.answer();
 
-// Hangup / Reject
+// Hangup or Reject a call
 await activeSession.current.hangup();
 ```
 
@@ -228,13 +233,13 @@ const numbers = softphone.getVirtualNumbers();
 ```
 
 ### 6. Manual Reconnect
-If the user goes offline, you can offer a retry button.
+If the connection drops, you can provide a manual reconnection trigger.
 
 ```typescript
 try {
     await softphone.connect();
 } catch (e) {
-    Alert.alert("Still offline");
+    Alert.alert("Reconnection failed", "Please check your network connection.");
 }
 ```
 
@@ -242,12 +247,12 @@ try {
 
 ## 📡 Handling Background/Killed State
 
-Standard WebSockets die when the app is killed. To receive calls in this state, you must implement **Native VoIP Push**.
+Standard WebSockets are terminated when an app is killed. To receive calls in this state, you must implement a native VoIP push notification solution.
 
-1.  **Background (App Minimized):** The SDK listens to `AppState` changes and automatically reconnects the socket when the app comes to the foreground.
+1.  **Background (App Minimized):** The SDK listens to `AppState` changes and automatically attempts to reconnect the socket when the app is brought to the foreground.
 2.  **Killed (App Closed):**
-    *   **Android:** Requires FCM Data Messages + `react-native-callkeep` + Foreground Service.
-    *   **iOS:** Requires APNs PushKit (VoIP Push) + `react-native-callkeep` + `CallKit`.
+    *   **Android:** Requires a solution using FCM Data Messages, `react-native-callkeep`, and a Foreground Service.
+    *   **iOS:** Requires APNs PushKit (VoIP Push) integrated with `react-native-callkeep` and Apple's `CallKit` framework.
 
 ---
 
@@ -257,35 +262,37 @@ Standard WebSockets die when the app is killed. To receive calls in this state, 
 
 | Method | Returns | Description |
 | :--- | :--- | :--- |
-| `static initialize(creds)` | `Promise<Softphone \| null>` | Configures SDK, restores session, checks permissions. |
-| `static login(params?)` | `Promise<Softphone \| void>` | If params `{accessToken, email, refreshToken, clientId?, clientSecret?}` provided, logs in directly. <br> **Note:** `clientId` and `clientSecret` are only used to refresh the token if the provided `accessToken` is expired. Else, opens browser. |
-| `static handleRedirect(url)` | `Promise<Softphone>` | Completes browser login from deep link. |
-| `start(listeners)` | `Promise<void>` | Connects WebSocket, registers SIP, fetches Profile. |
-| `connect()` | `Promise<void>` | Manually attempts to reconnect the transport. |
-| `makeCall(to, [from])` | `Promise<boolean>` | Starts a call. Updates user profile if `from` differs from default. |
-| `getVirtualNumbers()` | `VirtualNumber[]` | Returns array of available caller IDs. |
-| `logout()` | `Promise<void>` | Destroys session, unregisters SIP, clears storage. |
+| `static initialize(creds)` | `Promise<Softphone \| null>` | Configures SDK with credentials, restores a previous session from storage, and checks permissions. |
+| `static login(params?)` | `Promise<Softphone \| void>` | If params `{accessToken, email, refreshToken, clientId?, clientSecret?}` are provided, logs in directly. `refreshToken` is required. <br> **Note:** `clientId` and `clientSecret` are only used to refresh the token if the provided `accessToken` is already expired. If no params are given, it initiates the standard browser OAuth flow. |
+| `static handleRedirect(url)` | `Promise<Softphone>` | Exchanges the authorization code from a deep link URL for session tokens and completes the browser login flow. |
+| `start(listeners)` | `Promise<void>` | Connects the WebSocket, registers the SIP user agent, fetches the user profile, and attaches event listeners. Includes `onSessionRefresh` listener. |
+| `connect()` | `Promise<void>` | Manually attempts to reconnect the transport and re-register the SIP user agent. |
+| `makeCall(to, [from])` | `Promise<boolean>` | Initiates an outbound call. Updates the user's primary virtual number if `from` differs from the current default. |
+| `getVirtualNumbers()` | `VirtualNumber[]` | Returns an array of available caller IDs (virtual numbers) for the authenticated user. |
+| `getTokens()` | `TokenPayload \| null` | Returns the current session tokens (`accessToken`, `refreshToken`, `email`). |
+| `logout()` | `Promise<void>` | Destroys the current session, unregisters the SIP user agent, and clears all credentials from secure storage. |
 
 ### `Session` Class
 
 | Method | Description |
 | :--- | :--- |
-| `answer()` | Accepts incoming call (sends 200 OK). |
-| `hangup()` | Ends call (Cancel/Reject/Bye). |
+| `answer()` | Accepts an incoming call. |
+| `hangup()` | Ends the current call (can be used to cancel, reject, or terminate). |
 
 ---
 
 ## ⚠️ Troubleshooting
 
 **Q: `TypeError: answer is not a function`**
-*   **Fix:** Ensure `onCallCreated` listener receives **3 arguments**: `(type, session, details)`. You are likely trying to call `.answer()` on the `details` object instead of the `session`.
+*   **Fix:** Ensure your `onCallCreated` listener receives **3 arguments**: `(type, session, details)`. You are likely trying to call `.answer()` on the `details` object instead of the `session` object.
 
 **Q: Calls drop immediately with "Ghost Hangup"**
-*   **Fix:** This happens due to SIP Call Forking. Ensure your `onCallHangup` listener checks `if (activeSession.current !== session) return;`.
+*   **Fix:** This is caused by SIP Call Forking. To prevent this, your `onCallHangup` listener must check if the session being hung up is the currently active one: `if (activeSession.current !== session) return;`.
 
 **Q: 401 Unauthorized Errors**
-*   **Fix:** The SDK has **Auto-Refresh**. It will catch the error, refresh the token, retry the request, and update storage automatically. No action needed.
+*   **Fix:** The SDK handles this automatically with its **Auto-Refresh** mechanism. It will detect the error, refresh the session tokens using the stored refresh token, and retry the failed request. No action is required from you.
+*   **Note**: If you need to be notified when tokens are refreshed (e.g., to update your own app's state or storage), use the `onSessionRefresh` event listener passed to the `start()` method.
 
 ---
 
-**License:** Proprietary. Copyright 2025.
+**License:** MIT
