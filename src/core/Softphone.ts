@@ -1,12 +1,18 @@
 import { BASE_URL } from '../constants';
 import * as Exceptions from '../exceptions';
-import type { Listeners } from '../types';
+import type { Listeners, TokenPayload } from '../types';
 import { validatePhoneNumber } from '../utils/validation';
 import Auth from './Auth';
 import type { VirtualNumber } from './Auth';
 import UserAgent from './UserAgent';
 import { TokenManager } from "../services/TokenManager";
 import { AppState, type AppStateStatus } from 'react-native';
+
+export interface DirectLoginCredentials {
+    accessToken: string;
+    email: string;
+    refreshToken: string; 
+}
 
 class Softphone {
     static #clientId: string | null = null;
@@ -45,10 +51,31 @@ class Softphone {
         return null;
     }
 
-    public static async login(): Promise<void> {
+    public static async login(credentials?: DirectLoginCredentials): Promise<Softphone | void> {
         this.ensureInitialized('login');
-        const tempAuth = new Auth();
-        await tempAuth.login({ clientId: this.#clientId! });
+
+        // CASE A: Direct Login (Parameters provided)
+        if (credentials) {
+            console.log('Softphone: Performing direct login with provided credentials.');
+            const auth = new Auth();
+
+            // This will throw an error if the provided token is invalid
+            await auth.manualLogin(
+                credentials.accessToken,
+                credentials.email,
+                credentials.refreshToken // Now required
+            );
+
+            console.log('Softphone: Direct login successful. Returning instance.');
+            return new Softphone(auth);
+        }
+
+        // CASE B: Standard OAuth Flow (No parameters)
+        else {
+            console.log('Softphone: Performing standard OAuth login.');
+            const tempAuth = new Auth();
+            await tempAuth.login({ clientId: this.#clientId! });
+        }
     }
 
     public static async handleRedirect(url: string): Promise<Softphone> {
@@ -59,15 +86,33 @@ class Softphone {
         throw new Exceptions.UnauthorizedException('handleRedirect', 'Authentication failed.');
     }
 
-    private async executeWithRetry<T>(action: () => Promise<T>): Promise<T> {
+private async executeWithRetry<T>(action: () => Promise<T>): Promise<T> {
         try {
             return await action();
         } catch (error) {
             if (error instanceof Exceptions.InvalidTokenException) {
                 console.log('Softphone: ⚠️ Caught 401. Initiating Auto-Refresh...');
-                if (!Softphone.#clientId || !Softphone.#clientSecret) throw new Exceptions.UnauthorizedException('executeWithRetry', 'Missing Credentials');
+                
+                if (!Softphone.#clientId || !Softphone.#clientSecret) {
+                    throw new Exceptions.UnauthorizedException('executeWithRetry', 'Missing Credentials');
+                }
+
+                // Attempt Refresh
                 const success = await this.#auth.refreshAccessToken(Softphone.#clientId, Softphone.#clientSecret);
-                if (success) return await action();
+                
+                if (success) {
+                    // If listeners are registered and refresh succeeded, notify the app
+                    if (this.#clientListeners && this.#clientListeners.onSessionRefresh) {
+                        const tokens = this.getTokens();
+                        if (tokens) {
+                            console.log('Softphone: Emitting new tokens via onSessionRefresh');
+                            this.#clientListeners.onSessionRefresh(tokens);
+                        }
+                    }
+
+                    return await action();
+                }
+                
                 await this.logout();
                 throw new Exceptions.UnauthorizedException('executeWithRetry', 'Session expired.');
             }
@@ -156,9 +201,9 @@ class Softphone {
 
             if (!validatePhoneNumber(number)) {
                 throw new Exceptions.InvalidValueException(
-                    'Softphone.makeCall', 
-                    'number', 
-                    number, 
+                    'Softphone.makeCall',
+                    'number',
+                    number,
                     ['E.164 format (e.g., +[Country Code][Number])']
                 );
             }
@@ -207,7 +252,7 @@ class Softphone {
     }
 
     async #updatePrimaryVirtualNumber(virtualNumber: any) {
-        const Url = BASE_URL + `/v1/auth/update-userprofile/?email=${encodeURIComponent(this.#auth.getEmail || "")}`;
+        const Url = BASE_URL + `/auth/update-userprofile/?email=${encodeURIComponent(this.#auth.getEmail() || "")}`;
         const response = await fetch(Url, {
             method: 'PATCH',
             headers: { 'authorization': `Bearer ${this.#auth.getAccessToken()}`, 'Content-type': 'application/json' },
@@ -255,6 +300,17 @@ class Softphone {
         const config = { auth: this.#auth, listeners: this.#clientListeners, sipCredentials, edgeDomain };
         this.#userAgent = new UserAgent(config);
         await this.#userAgent.startUA();
+    }
+
+    public getTokens(): TokenPayload | null {
+        const accessToken = this.#auth.getAccessToken();
+        const refreshToken = this.#auth.getRefreshToken();
+        const email = this.#auth.getEmail();
+
+        if (accessToken && refreshToken && email) {
+            return { accessToken, refreshToken, email };
+        }
+        return null;
     }
 }
 
