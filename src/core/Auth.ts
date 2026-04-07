@@ -190,7 +190,7 @@ class Auth {
         if (!this.#accessToken || !this.#email) {
             throw new Exceptions.InvalidTokenException('registerSoftphone', 'INVALID');
         }
-        const res = await fetch(BASE_URL + `/v1/calls/register-softphone/?email=${encodeURIComponent(this.#email)}`, {
+        const res = await fetch(BASE_URL + `/v2/calls/register-softphone/?email=${encodeURIComponent(this.#email)}`, {
             method: 'GET',
             headers: { 'Authorization': `Bearer ${this.#accessToken}` }
         });
