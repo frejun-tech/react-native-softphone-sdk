@@ -252,7 +252,7 @@ private async executeWithRetry<T>(action: () => Promise<T>): Promise<T> {
     }
 
     async #updatePrimaryVirtualNumber(virtualNumber: any) {
-        const Url = BASE_URL + `/auth/update-userprofile/?email=${encodeURIComponent(this.#auth.getEmail() || "")}`;
+        const Url = BASE_URL + `/v1/auth/update-userprofile/?email=${encodeURIComponent(this.#auth.getEmail() || "")}`;
         const response = await fetch(Url, {
             method: 'PATCH',
             headers: { 'authorization': `Bearer ${this.#auth.getAccessToken()}`, 'Content-type': 'application/json' },
