@@ -72,7 +72,7 @@ export class Session {
                 if (this.#sipSession instanceof Inviter) {
                     await this.#sipSession.cancel();
                 } else if (this.#sipSession instanceof Invitation) {
-                    await this.#sipSession.reject();
+                    await this.#sipSession.reject({statusCode: 603});
                 }
                 break;
             case SessionState.Established:
