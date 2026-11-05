@@ -1,0 +1,106 @@
+name: Release
+
+# Publishes to npm, tags and creates a GitHub release whenever the `version`
+# in package.json on main is one that has not been published yet.
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+  workflow_dispatch:
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push tag + create GitHub release
+  id-token: write # npm provenance / trusted publishing
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: version
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "npm_published=true" >> "$GITHUB_OUTPUT"
+            echo "$NAME@$VERSION is already on npm"
+          else
+            echo "npm_published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "tag_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "release_exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "release_exists=false" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Setup
+        if: steps.version.outputs.npm_published == 'false'
+        uses: ./.github/actions/setup
+
+      - name: Configure npm registry
+        if: steps.version.outputs.npm_published == 'false'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          registry-url: https://registry.npmjs.org
+
+      - name: Update npm (required for trusted publishing)
+        if: steps.version.outputs.npm_published == 'false'
+        run: npm install -g npm@latest
+
+      - name: Build package
+        if: steps.version.outputs.npm_published == 'false'
+        run: yarn prepare
+
+      - name: Publish to npm
+        if: steps.version.outputs.npm_published == 'false'
+        run: |
+          # Pre-release versions (e.g. 2.1.0-beta.1) go to the `next` dist-tag
+          if [[ "$VERSION" == *-* ]]; then DIST_TAG=next; else DIST_TAG=latest; fi
+          npm publish --provenance --access public --tag "$DIST_TAG" --ignore-scripts
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create tag and GitHub release
+        if: steps.version.outputs.release_exists == 'false'
+        run: |
+          ARGS=(--title "$TAG" --generate-notes)
+          if [[ "$VERSION" == *-* ]]; then ARGS+=(--prerelease); fi
+          # Reuse an existing tag if one was pushed manually; otherwise tag this commit
+          if [[ "$TAG_EXISTS" == "true" ]]; then
+            ARGS+=(--verify-tag)
+          else
+            ARGS+=(--target "$GITHUB_SHA")
+          fi
+          gh release create "$TAG" "${ARGS[@]}"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG_EXISTS: ${{ steps.version.outputs.tag_exists }}
